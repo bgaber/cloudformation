@@ -1,0 +1,219 @@
+---
+# Author: Brian Gaber
+# BB Modernization Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name amazon-mq-stack --template-body file://amz-mq.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - MQ Security Group
+# - Amazon MQ Broker
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-02-10 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: BB Modernization
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Mike Legato
+    Type: String
+  InstanceType:
+    Description: Enter mq.t2.micro, mq.t3.micro, mq.m4.large, mq.m5.large, mq.m5.xlarge, mq.m5.2xlarge or mq.m5.4xlarge. Default is mq.m5.xlarge.
+    Type: String
+    Default: mq.m5.xlarge
+    AllowedValues:
+      - mq.t2.micro
+      - mq.t3.micro
+      - mq.m4.large
+      - mq.m5.large
+      - mq.m5.xlarge
+      - mq.m5.2xlarge
+      - mq.m5.4xlarge
+  MqPrivSubnets:
+    Description: Amazon MQ Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-2a590000, subnet-63696015"
+  SecGpName:
+    Description: Name of Security Group
+    Default: bb-modernization-amazon-mq-dev
+    Type: String
+  VpcId:
+    Description: Dev VPC
+    Default: vpc-87e65ae0
+    Type: AWS::EC2::VPC::Id
+  VpcCidr:
+    Description: CIDR of the selected VPC
+    Default: 10.251.32.0/20
+    Type: String
+  Username:
+    Description: An ActiveMQ user is a person or an application that can access the queues and topics of an ActiveMQ broker.
+    Type: String
+    Default: fudde
+  Password:
+    Description: Password of the ActiveMQ user
+    Type: String
+    Default: Password1234
+    NoEcho: true
+  AWSaccount:
+    Description: The AWS Account for this deployment
+    Type: String
+    Default: 995437807815
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Amazon MQ"
+        Parameters:
+          - InstanceType
+          - MqPrivSubnets
+          - Username
+          - Password
+      - Label:
+          default: "Network"
+        Parameters:
+          - SecGpName
+          - VpcId
+          - VpcCidr
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      InstanceType:
+        default: "What is the desired instance type for this Amazon MQ Broker?"
+      MqPrivSubnets:
+        default: "What are the Subnets for this Amazon MQ Broker?"
+      SecGpName:
+        default: "What is the name of the Security Group for this Amazon MQ Broker?"
+      AWSaccount:
+        default: "What is the AWS Account for this deployment"
+
+Resources:
+  # Create BB Modernization Amazon MQ Security Group
+  MqSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from Internal CompuCom
+      GroupName: !Ref SecGpName
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.5/32
+          Description: DIMS SPL099PAS01 - Steve Best
+          FromPort: 61617
+          IpProtocol: tcp
+          ToPort: 61617
+        - CidrIp: 10.16.0.13/32
+          Description: DIMS SQL099PAS01 - Steve Best
+          FromPort: 61617
+          IpProtocol: tcp
+          ToPort: 61617
+        - CidrIp: !Ref VpcCidr
+          Description: OpenWire
+          FromPort: 61617
+          IpProtocol: tcp
+          ToPort: 61617
+        - CidrIp: !Ref VpcCidr
+          Description: STOMP
+          FromPort: 61617
+          IpProtocol: tcp
+          ToPort: 61617
+        - CidrIp: !Ref VpcCidr
+          Description: WSS
+          FromPort: 61616
+          IpProtocol: tcp
+          ToPort: 61616
+        - CidrIp: !Ref VpcCidr
+          Description: AMQP
+          FromPort: 5671
+          IpProtocol: tcp
+          ToPort: 5671
+        - CidrIp: !Ref VpcCidr
+          Description: MQTT
+          FromPort: 8883
+          IpProtocol: tcp
+          ToPort: 8883
+        - CidrIp: 10.218.0.0/16
+          Description: network-troubleshooting
+          FromPort: -1
+          IpProtocol: icmp
+          ToPort: -1
+        - CidrIp: 10.218.0.0/16
+          Description: ActiveMQ Web Console Access from AnyConnect VPN
+          FromPort: 8162
+          IpProtocol: tcp
+          ToPort: 8162
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Owner
+          Value: !Ref Owner
+      VpcId:
+        Ref: VpcId
+
+  AmazonMqBroker:
+    Type: AWS::AmazonMQ::Broker
+    Properties: 
+      AuthenticationStrategy: Simple
+      AutoMinorVersionUpgrade: true
+      BrokerName: BB-Modernization-Amazon-MQ-Broker
+      DeploymentMode: ACTIVE_STANDBY_MULTI_AZ
+      EngineType: ACTIVEMQ
+      EngineVersion: 5.17.2
+      HostInstanceType: !Ref InstanceType
+      MaintenanceWindowStartTime: 
+        DayOfWeek: Sunday
+        TimeOfDay: 02:00:00
+        TimeZone: America/Toronto
+      PubliclyAccessible: false
+      SecurityGroups:
+        - !Ref MqSecurityGroup
+      #StorageType: String
+      SubnetIds: !Ref MqPrivSubnets
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+      Users: 
+        - ConsoleAccess: true
+          Password: !Ref Password
+          Username: !Ref Username
+
+Outputs:
+  AmazonMqBrokerID:
+    Description: Amazon MQ Broker ID
+    Value: !Ref AmazonMqBroker
+  AmazonMqBrokerEndPt:
+    Description: Amazon MQ Broker Endpoint
+    Value: !Join [',', !GetAtt AmazonMqBroker.AmqpEndpoints]
+  AmazonMqBrokerArn:
+    Description: Amazon MQ Broker Arn
+    Value: !GetAtt AmazonMqBroker.Arn
+  AmazonMqBrokerIp:
+    Description: Amazon MQ Broker IP Addresses
+    Value: !Join [',', !GetAtt AmazonMqBroker.IpAddresses]

@@ -1,0 +1,114 @@
+---
+# Author: Brian Gaber
+# AI SelfHelp Kinesis Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name xli-connect-kinesis-stack --template-body file://cg3-s3-cf.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Kinesis Firehose Delivery Stream
+# - CloudWatch Log Group Subscription Filter
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-12-06 10:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who executed this CloudFormation template
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Experience Management
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Trevor Kirk
+    Type: String
+  S3BucketName:
+    Description: S3 Bucket Name
+    Default: cc-xli-cw-logs-uat
+    Type: String
+  S3BucketPrefix:
+    Description: S3 Bucket Prefix
+    Default: connect
+    Type: String
+    AllowedValues: [connect, kendra, lex, twilio]
+  LogGroup:
+    Description: Log Group Name
+    Default: /aws/ecs/connect-cluster-uat
+    Type: String
+    AllowedValues: [/aws/ecs/connect-cluster-uat, /aws/lambda/kendra_Search, /connect/lex/Compucom, /aws/lambda/process-twilio-message]
+  LambdaTransformArn:
+    Description: Transform source records with AWS Lambda
+    Default: arn:aws:lambda:us-east-1:047453590376:function:FirehoseLogTransformation:$LATEST
+    Type: String
+  
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      S3BucketName:
+        default: "What is the name of the S3 bucket?"
+      S3BucketPrefix:
+        default: "What is the prefix of the S3 bucket?"
+
+Resources:
+  Firehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Join ["-", ["exp-mgt", !Ref S3BucketPrefix, "delivery-stream"] ]
+      DeliveryStreamType: DirectPut
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !Join ["", ["arn:aws:s3:::", !Ref S3BucketName] ]
+        BufferingHints:
+          SizeInMBs: 5
+          IntervalInSeconds: 300
+        CompressionFormat: UNCOMPRESSED
+        Prefix: !Join ["", [!Ref S3BucketPrefix, "/"] ]
+        ProcessingConfiguration:
+          Enabled: 'true'
+          Processors:
+            - Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !Ref LambdaTransformArn
+              Type: Lambda
+        RoleARN: !ImportValue ExFirehoseRoleARN
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  SubscriptionFilter: 
+    Type: AWS::Logs::SubscriptionFilter
+    Properties: 
+      RoleArn: !ImportValue ExCWLtoKinesisFirehoseRole
+      LogGroupName: !Ref LogGroup
+      FilterName: "AllTraffic"
+      FilterPattern: ""
+      DestinationArn: !GetAtt Firehose.Arn
+
+Outputs:
+  FirehoseName:
+    Description: Kinesis Firehose Name
+    Value: !Ref Firehose
+  FirehoseARN:
+    Description: Kinesis Firehose ARN
+    Value: !GetAtt Firehose.Arn

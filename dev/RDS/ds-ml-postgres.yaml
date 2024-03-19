@@ -1,0 +1,226 @@
+---
+# Author: Brian Gaber
+# Data Science Machine Learning RDS Postgres Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name ds-ml-postgres-stack --template-body file://ds-ml-postgres.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - RDS Cluster
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-02-06 08:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Data Science Machine Learning
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Paul Dams
+    Type: String
+  vpcId:
+    Description: Dev VPC
+    Default: vpc-87e65ae0
+    Type: AWS::EC2::VPC::Id
+  privSubnets:
+    Description: Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-2a590000, subnet-63696015"
+  username:
+    Description: Postgres master username
+    Default: postgres
+    Type: String
+  password:
+    Description: Postgres master password
+    Default: Postgres1234
+    Type: String
+    NoEcho: true
+  RDSClusterId:
+    Description: Postgres Cluster ID
+    Default: machine-learning-dev
+    Type: String
+  RDSInstanceId:
+    Description: Postgres Instance ID
+    Default: machine-learning-dev
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network"
+        Parameters:
+          - vpcId
+          - privSubnets
+      - Label:
+          default: "RDS"
+        Parameters:
+          - username
+          - password
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      username:
+        default: "What is the RDS Master User Name?"
+      password:
+        default: "What is the RDS Master User Password?"
+
+Resources:
+  # Create Machine Learning Security Group
+  MachineLearningSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from Internal CompuCom
+      GroupName: !Ref RDSInstanceId
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.251.21.90/32
+          Description: Machine learning Prod Server
+          FromPort: 5432
+          IpProtocol: tcp
+          ToPort: 5432
+        - CidrIp: 10.251.36.99/32
+          Description: Machine learning dev - INC43497004 server
+          FromPort: 5432
+          IpProtocol: tcp
+          ToPort: 5432
+        - CidrIp: 10.218.0.0/16
+          Description: AnyConnect VPN
+          FromPort: 5432
+          IpProtocol: tcp
+          ToPort: 5432
+        - CidrIp: 10.251.21.14/32
+          Description: Machine learning Prod Server
+          FromPort: 5432
+          IpProtocol: tcp
+          ToPort: 5432
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Owner
+          Value: !Ref Owner
+      VpcId:
+        Ref: vpcId
+
+  # Create RDS DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Private Dev Subnets
+      SubnetIds: !Ref privSubnets
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Owner
+          Value: !Ref Owner
+  
+  # Create RDS Postgres Cluster
+  # RDSCluster:
+  #   Type: AWS::RDS::DBCluster
+  #   Properties: 
+  #     DBClusterIdentifier: 
+  #       Ref: RDSClusterId
+  #     DBSubnetGroupName: 
+  #       Ref: DBSubnetGroup
+  #     Engine: postgres
+  #     EngineVersion: 14.3
+  #     MasterUserPassword: 
+  #       Ref: password
+  #     MasterUsername: 
+  #       Ref: username
+  #     VpcSecurityGroupIds:
+  #       - !Ref MachineLearningSG
+
+  # Create RDS Postgres Instance
+  RDSDBInstance:
+    DependsOn:
+    - MachineLearningSG
+    - DBSubnetGroup
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 999
+      # DBClusterIdentifier: !Ref RDSClusterId
+      DBInstanceClass: db.t4g.xlarge
+      DBInstanceIdentifier: !Ref RDSInstanceId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DeletionProtection: false
+      EnableCloudwatchLogsExports:
+        - postgresql
+      EnablePerformanceInsights: true
+      Engine: postgres
+      EngineVersion: 14.3
+      Iops: 30000
+      LicenseModel: postgresql-license
+      MasterUserPassword: !Ref password
+      MasterUsername: !Ref username
+      MultiAZ: true
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      StorageType: io1
+      VPCSecurityGroups:
+        - !Ref MachineLearningSG
+      
+Outputs:
+  # DBClusterID:
+  #   Description: DB Cluster Id
+  #   Value: !Ref RDSCluster
+  # DBClusterArn:
+  #   Description: DB Cluster Arn
+  #   Value:
+  #     !GetAtt RDSCluster.DBClusterArn
+  # DBClusterEndPt:
+  #   Description: DB Cluster End Point
+  #   Value:
+  #     !GetAtt RDSCluster.Endpoint
+  # DBClusterEndPtAddr:
+  #   Description: DB Cluster End Point Address
+  #   Value:
+  #     !GetAtt RDSCluster.Endpoint.Address
+  # DBClusterEndPtPort:
+  #   Description: DB Cluster End Point Port
+  #   Value:
+  #     !GetAtt RDSCluster.Endpoint.Port
+  DBInstanceName:
+    Description: DB Instance Name
+    Value: !Ref RDSDBInstance
+  DBInstanceArn:
+    Description: DB Instance Arn
+    Value:
+      !GetAtt RDSDBInstance.DBInstanceArn
+  DBInstanceEndPtAddr:
+    Description: DB Instance End Point Address
+    Value:
+      !GetAtt RDSDBInstance.Endpoint.Address
+  DBInstanceEndPtPort:
+    Description: DB Instance End Point Port
+    Value:
+      !GetAtt RDSDBInstance.Endpoint.Port
+  MLSecurityGroup:
+    Description: Machine Learning Security Group
+    Value: !Ref MachineLearningSG
+  MLSecurityGroupId:
+    Description: Machine Learning Security Group Id
+    Value:
+      !GetAtt MachineLearningSG.GroupId

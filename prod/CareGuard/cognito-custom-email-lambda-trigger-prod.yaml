@@ -1,0 +1,159 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 Cognito Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-cognito-stack --template-body file://cg3-cognito-prod.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - IAM Policy
+# - IAM Role
+# - Lambda Function
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-05-03 08:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  FuncName:
+    Description: Lambda Function Name
+    Default: careguard-custom-email-message
+    Type: String
+  RdsPrivSubnets:
+    Description: RDS Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-c66df2ea, subnet-a1f61bc5"
+  RdsSecurityGroup:
+    Description: RDS Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-f464a3bc
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network"
+        Parameters:
+          - RdsPrivSubnets
+          - RdsSecurityGroup
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      RdsPrivSubnets:
+        default: "What are the Subnets where the RDS MySQL database is that will be used by the Lambda triggers?"
+      RdsSecurityGroup:
+        default: "What is the Security Group for the RDS MySQL database that will be used by the Lambda triggers?"
+
+Resources:
+  CustomEmailIAMpolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: CareGuard Custom Email Message Prod
+      ManagedPolicyName: careguard_custom_email_prod
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:DeleteNetworkInterface'
+              - 'logs:CreateLogGroup'
+            Resource:
+              - !Join ["", ["arn:aws:logs:us-east-1:", !Ref AWS::AccountId, ":*"] ]
+              - !Join ["", ["arn:aws:ec2:us-east-1:", !Ref AWS::AccountId, ":*"] ]
+          - Effect: Allow
+            Action: 'ec2:DescribeNetworkInterfaces'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: !Join ["", ["arn:aws:logs:us-east-1:", !Ref AWS::AccountId, ":log-group:/aws/lambda/careguard-custom-email-prod:*"] ]
+
+  CustomEmailIAMrole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns: 
+        - !Ref CustomEmailIAMpolicy
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+
+  CustomEmailLambdaTrigger:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: CareGuard 3 Cognito Custom Email Message Function
+      FunctionName: !Ref FuncName
+      Handler: index.handler
+      Role: !GetAtt CustomEmailIAMrole.Arn
+      Code:
+        S3Bucket: careguard-cognito-bucket
+        S3Key: cg3-custom-email-message-a8c3a367-90d1-4c10-aaae-719bcd8c8fb2.zip
+      Runtime: nodejs18.x
+      Timeout: 3
+      TracingConfig:
+        Mode: Active
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref RdsSecurityGroup
+        SubnetIds: !Ref RdsPrivSubnets
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+
+Outputs:
+  CustomEmailManagedPolicyARN:
+    Description: Custom Email IAM Managed Policy ARN
+    Value: !Ref CustomEmailIAMpolicy
+  CustomEmailIAMRoleARN:
+    Description: Custom Email IAM Role ARN
+    Value: !GetAtt CustomEmailIAMrole.Arn
+  CustomEmailLambda:
+    Description: Custom Email Lambda Id
+    Value: !Ref CustomEmailLambdaTrigger
+  CustomEmailLambdaArn:
+    Description: Custom Email Lambda Arn
+    Value: !GetAtt CustomEmailLambdaTrigger.Arn
+    Export:
+      Name: CustomEmailLambdaArn

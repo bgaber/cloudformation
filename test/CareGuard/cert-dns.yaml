@@ -1,0 +1,52 @@
+---
+# Author: Brian Gaber
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-01-18 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  DomainName:
+    Description: The domain name
+    Type: String
+    Default: identitytest.careguard.net
+
+Resources:
+  # Create CareGuard ACM certificate
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub '*.${DomainName}'
+      SubjectAlternativeNames:
+        - !Sub '${DomainName}'
+      Tags: 
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+      ValidationMethod: DNS
+
+Outputs:
+  ACMcertARN:
+    Description: ACM Certificate ARN
+    Value: !Ref Certificate
+    Export:
+      Name: CertArn

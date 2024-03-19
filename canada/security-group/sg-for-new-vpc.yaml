@@ -1,0 +1,383 @@
+---
+# Brian Gaber
+# Security Group Cloudformation Template
+# Creates Security Group for Standard, SMARTS, Cisco AnyConnect, Qualys and Redhat Capsule
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-06 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Incident:
+    Description: Service Now Incident
+    Default: INC44359425
+    Type: String
+  Customer:
+    Description: Name of Customer
+    Default: UHN
+    Type: String
+  VpcId:
+    Description: New VPC Id
+    Default: vpc-08fe1dd721e09e558
+    Type: AWS::EC2::VPC::Id
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+
+Resources:
+  StandardSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Join [" ", [!Ref Customer, "CUSTOMER VPC - US COMPUCOM"] ]
+      GroupName: !Join [" ", [!Ref Customer, "Standard SG"] ]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          IpProtocol: tcp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          IpProtocol: tcp
+          FromPort: 8085
+          ToPort: 8085
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          IpProtocol: tcp
+          FromPort: 8082
+          ToPort: 8082
+        - CidrIp: 161.108.208.177/32
+          Description: EPO wake up agent NEW
+          IpProtocol: tcp
+          FromPort: 8085
+          ToPort: 8085
+        - CidrIp: 206.178.22.0/24
+          Description: EPO agent broadcast TENANT
+          IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+        - CidrIp: 10.251.2.17/32
+          Description: EPO wake up agent NEW
+          IpProtocol: tcp
+          FromPort: 8085
+          ToPort: 8085
+        - CidrIp: 161.108.208.0/24
+          Description: EPO agent broadcast CA PROD
+          IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+        - CidrIp: 10.0.0.0/8
+          Description: SSH from all of 10
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: 10.251.2.59/32
+          Description: SSH (AWX)
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: 10.251.2.59/32
+          Description: WinRM (AWX)
+          IpProtocol: tcp
+          FromPort: 5985
+          ToPort: 5986
+      Tags:
+        - Key: Name
+          Value: !Join [" ", ["Standard SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: Jason Boomer
+        - Key: Application
+          Value: Standard SG
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+  SmartsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SMARTS
+      GroupName: SMARTS
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: tcp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: udp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS Ping Requirement
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: tcp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: udp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS Ping Requirement
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: !Join [" ", ["SMARTS SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: Kevin Smith
+        - Key: Application
+          Value: SMARTS
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+  AnyConnectVpnSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AnyConnect VPN
+      GroupName: AnyConnect VPN
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.218.0.0/16
+          Description: Anyconnect RDP
+          IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+        - CidrIp: 10.218.0.0/16
+          Description: Anyconnect SSH
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: 10.218.0.0/16
+          Description: Anyconnect HTTP
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 10.218.0.0/16
+          Description: Anyconnect HTTPS
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+      Tags:
+        - Key: Name
+          Value: !Join [" ", ["AnyConnect VPN SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: Jason Boomer
+        - Key: Application
+          Value: AnyConnect VPN
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+  QualysSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qualys Scanner Appliance
+      GroupName: Qualys Scanner Appliance
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+      Tags:
+        - Key: Name
+          Value: !Join [" ", ["Qualys Scanner SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: Shashank Gahoi
+        - Key: Application
+          Value: Qualys Scanner
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+  RedhatCapsuleSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redhat Capsule
+      GroupName: RedHat Capsule Communication
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule HTTP
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule
+          IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule HTTPS
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule
+          IpProtocol: tcp
+          FromPort: 8140
+          ToPort: 8140
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule
+          IpProtocol: tcp
+          FromPort: 5647
+          ToPort: 5647
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule HTTPS
+          IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule
+          IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+        - CidrIp: 10.251.21.57/32
+          Description: Redhat Capsule SSH
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      Tags:
+        - Key: Name
+          Value: !Join [" ", ["Redhat Capsule SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: Aman Singh
+        - Key: Application
+          Value: Redhat Capsule
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref VpcId
+  StandardSecurityGroupId:
+    Description: Standard Security Group
+    Value: !Ref StandardSecurityGroup
+  SmartsSecurityGroupId:
+    Description: SMARTS Security Group
+    Value: !Ref SmartsSecurityGroup
+  AnyConnectVpnSecurityGroupId:
+    Description: AnyConnect VPN Security Group
+    Value: !Ref AnyConnectVpnSecurityGroup
+  QualysSecurityGroupId:
+    Description: Qualys Security Group
+    Value: !Ref QualysSecurityGroup
+  RedhatCapsuleSecurityGroupId:
+    Description: Redhat Capsule Security Group
+    Value: !Ref RedhatCapsuleSecurityGroup

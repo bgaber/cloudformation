@@ -1,0 +1,132 @@
+---
+# Brian Gaber
+# Security Group Cloudformation Template
+# Creates Security Group for Qualys
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-06 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Qualys Scanner
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Shashank Gahoi
+    Type: String
+  Incident:
+    Description: Service Now Incident
+    Default: INC44359425
+    Type: String
+  Customer:
+    Description: Name of Customer
+    Default: UHN
+    Type: String
+  VpcId:
+    Description: New VPC Id
+    Default: vpc-08fe1dd721e09e558
+    Type: AWS::EC2::VPC::Id
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+
+Resources:
+  QualysSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qualys Scanner Appliance
+      GroupName: !Join [" ", [!Ref Application, "SG in", !Ref Customer, "VPC"] ]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+      Tags:
+        - Key: Name
+          Value: !Join [" ", [!Ref Application, "SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref VpcId
+  QualysSecurityGroupId:
+    Description: Qualys Security Group
+    Value: !Ref QualysSecurityGroup

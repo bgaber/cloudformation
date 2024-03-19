@@ -1,0 +1,473 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 Backend Cloudformation Template - REPLACED BY nlb-api-gw-test.yaml
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-s3-cf-stack --template-body file://cg3-backend-test.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - ECS Cluster
+# - ALB
+# - CloudWatch Log Group
+# - IAM Role
+# - IAM Policy
+#
+# DO NOT USE BECAUSE THIS HAS BEEN REPLACED BY nlb-api-gw-test.yaml
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-01-19 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who executed this CloudFormation template
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Default: careguard-test-cluster
+    Type: String
+  ECSContainerName:
+    Description: ECS Container Name
+    Default: careguard-test-container
+    Type: String
+  VPCIdValue:
+    Description: VPC ID
+    Default: vpc-15df6372
+    Type: String
+  PublicSubnetA:
+    Description: Public Subnet A
+    Default: subnet-2fd68d77
+    Type: String
+  PublicSubnetB:
+    Description: Public Subnet B
+    Default: subnet-395d0413
+    Type: String
+  PrivateSubnetA:
+    Description: Private Subnet A
+    Default: subnet-16d58e4e
+    Type: String
+  PrivateSubnetB:
+    Description: Private Subnet B
+    Default: subnet-bc5d0496
+    Type: String
+  ACMCertARN:
+    Description: The ACM Certificate ARN for *.careguard.net
+    Type: String
+    Default: arn:aws:acm:us-east-1:300899438431:certificate/04617f26-a812-4fb8-91c8-e5f44761997d
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Elastic Container Service"
+        Parameters:
+          - ECSClusterName
+          - ECSContainerName
+      - Label:
+          default: "Networking"
+        Parameters:
+          - VPCIdValue
+          - PublicSubnetA
+          - PublicSubnetB
+          - PrivateSubnetA
+          - PrivateSubnetB
+          - ACMCertARN
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      ECSClusterName:
+        default: "What is the ECS Cluster Name"
+      ECSContainerName:
+        default: "What is the ECS Container Name"
+      VPCIdValue:
+        default: "What is the VPC ID"
+      PublicSubnetA:
+        default: "What is the Public Subnet A"
+      PublicSubnetB:
+        default: "What is the Public Subnet B"
+      PrivateSubnetA:
+        default: "What is the Private Subnet A"
+      PrivateSubnetB:
+        default: "What is the Private Subnet B"
+      ACMCertARN:
+        default: "What is the Load Balancer Listener ACM Certificate ARN"
+
+Resources:
+  careguardtestcluster96641DFA:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ECSClusterName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  # uses public subnets
+  careguardtestLB2C97B94F:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Scheme: internet-facing
+      SecurityGroups:
+        - Fn::GetAtt:
+            - careguardtestLBSecurityGroup2304EBA8
+            - GroupId
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      Type: application
+
+  careguardtestLBSecurityGroup2304EBA8:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from the Internet
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: allow https access from Internet
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      VpcId: !Ref VPCIdValue
+
+  careguardtestLBSecurityGrouptocareguardBackEndTestStackcareguardtestServiceSecurityGroupFCB4BA1F808171733CC7:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - careguardtestLBSecurityGroup2304EBA8
+          - GroupId
+      IpProtocol: tcp
+      Description: Load balancer to target
+      DestinationSecurityGroupId:
+        Fn::GetAtt:
+          - careguardtestServiceSecurityGroupB7D1ED58
+          - GroupId
+      FromPort: 8081
+      ToPort: 8081
+
+  careguardtestLBPublicListener1AF6661A:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: careguardtestLBPublicListenerECSGroup468442B4
+          Type: forward
+      LoadBalancerArn:
+        Ref: careguardtestLB2C97B94F
+      Certificates:
+        - CertificateArn: !Ref ACMCertARN
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2020-10
+
+  careguardtestLBPublicListenerECSGroup468442B4:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: "false"
+      TargetType: ip
+      VpcId: !Ref VPCIdValue
+
+  careguardtestTaskDefTaskRole2FD740FE:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      Description: CareGuard Task Definition Task Role
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  careguardtestTaskDef45BC25DB:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Essential: true
+          Image:
+            Fn::Join:
+              - ""
+              - - 300899438431.dkr.ecr.us-east-1.
+                - Ref: AWS::URLSuffix
+                - /cg3-backend:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Ref: careguardtestTaskDefcareguardtestcontainerLogGroup85319286
+              awslogs-stream-prefix: careguardBackEndTestStack
+              awslogs-region: us-east-1
+          Name: !Ref ECSContainerName
+          PortMappings:
+            - ContainerPort: 8081
+              Protocol: tcp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Fn::GetAtt:
+          - careguardtestTaskDefExecutionRole279D4200
+          - Arn
+      Family: careguardBackEndTestStackcareguardtestTaskDef594CF222
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TaskRoleArn:
+        Fn::GetAtt:
+          - careguardtestTaskDefTaskRole2FD740FE
+          - Arn
+
+  careguardtestTaskDefcareguardtestcontainerLogGroup85319286:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 1
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    
+  careguardtestTaskDefExecutionRole279D4200:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      Description: CareGuard Task Definition Execution Role
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  careguardtestTaskDefExecutionRoleDefaultPolicy1393103F:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+            Effect: Allow
+            Resource: arn:aws:ecr:us-east-1:300899438431:repository/cg3-backend
+          - Action: ecr:GetAuthorizationToken
+            Effect: Allow
+            Resource: "*"
+          - Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - careguardtestTaskDefcareguardtestcontainerLogGroup85319286
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: careguardtestTaskDefExecutionRoleDefaultPolicy1393103F
+      Roles:
+        - Ref: careguardtestTaskDefExecutionRole279D4200
+
+  # uses private subnets
+  careguardtestService2070701A:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Ref: careguardtestcluster96641DFA
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      EnableECSManagedTags: false
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Ref ECSContainerName
+          ContainerPort: 8081
+          TargetGroupArn:
+            Ref: careguardtestLBPublicListenerECSGroup468442B4
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - Fn::GetAtt:
+                - careguardtestServiceSecurityGroupB7D1ED58
+                - GroupId
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
+      ServiceName: careguard-test-service
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TaskDefinition:
+        Ref: careguardtestTaskDef45BC25DB
+    DependsOn:
+      - careguardtestLBPublicListenerECSGroup468442B4
+      - careguardtestLBPublicListener1AF6661A
+
+  careguardtestServiceSecurityGroupB7D1ED58:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: careguardBackEndTestStack/careguard-test/Service/SecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      VpcId: !Ref VPCIdValue
+
+  careguardtestServiceSecurityGroupfromcareguardBackEndTestStackcareguardtestLBSecurityGroupC3E2B9C38081ED7BADF8:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Load balancer to target
+      FromPort: 8081
+      GroupId:
+        Fn::GetAtt:
+          - careguardtestServiceSecurityGroupB7D1ED58
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - careguardtestLBSecurityGroup2304EBA8
+          - GroupId
+      ToPort: 8081
+
+Outputs:
+  ECSClusterARN:
+    Description: ECS Cluster ARN
+    Value: !GetAtt careguardtestcluster96641DFA.Arn
+  ECSTaskDefnARN:
+    Description: ECS Task Definition ARN
+    Value: !Ref careguardtestTaskDef45BC25DB
+  ECSServiceARN:
+    Description: ECS Service ARN
+    Value: !Ref careguardtestService2070701A
+  LogGroupName:
+    Description: CloudWatch Log Group Name
+    Value: !Ref careguardtestTaskDefcareguardtestcontainerLogGroup85319286
+  LogGroupARN:
+    Description: CloudWatch Log Group ARN
+    Value: !GetAtt careguardtestTaskDefcareguardtestcontainerLogGroup85319286.Arn
+  careguardtestLoadBalancerDNS80EE45F2:
+    Description: ALB Name
+    Value:
+      Fn::GetAtt:
+        - careguardtestLB2C97B94F
+        - DNSName
+  careguardtestServiceURL4A5E1299:
+    Description: ALB URL
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Fn::GetAtt:
+              - careguardtestLB2C97B94F
+              - DNSName

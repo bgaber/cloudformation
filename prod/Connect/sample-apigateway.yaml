@@ -1,0 +1,109 @@
+Resources:
+
+  MyRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: 'Replication Rest API'
+      Name: 'MySampleAPI'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+  
+  APIGWResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref MyRestApi
+      ParentId: !GetAtt MyRestApi.RootResourceId
+      PathPart: sendmessage
+
+  Method:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyRestApi
+      ResourceId: !Ref APIGWResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration: 
+        Type: MOCK
+
+  Deployment1:
+    DependsOn: APIGWResource
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref MyRestApi
+      Description: 'My sample deployment 1'
+  
+  Deployment2:
+    DependsOn: Deployment1
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref MyRestApi
+      Description: 'My sample deployment 2'
+
+  DevStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: 'dev'
+      RestApiId: !Ref MyRestApi
+      DeploymentId: !Ref Deployment1
+      CacheClusterEnabled: 'false'
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: 'false'
+        - ResourcePath: /sendmessage
+          HttpMethod: 'GET'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+        - ResourcePath: /process-twilio-message
+          HttpMethod: 'POST'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+      
+  v1Stage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: 'v1'
+      RestApiId: !Ref MyRestApi
+      DeploymentId: !Ref Deployment2
+      CacheClusterEnabled: 'false'
+      CacheClusterSize: 0.5
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: 'false'
+        - ResourcePath: /sendmessage
+          HttpMethod: 'POST'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+

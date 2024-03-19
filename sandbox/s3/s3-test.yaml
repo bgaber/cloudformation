@@ -1,0 +1,92 @@
+---
+# Author: Brian Gaber
+# AWS S3 Cloudformation Template
+#
+# Cloudformation stack can be created from the AWS console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right of the console.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region ca-central-1 cloudformation create-stack --stack-name test-s3-stack --template-body file://test-s3.yaml --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+#
+# This CloudFormation Template will create the following resources:
+# - S3 Bucket
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-12-11 11:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: Brian Gaber Using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: SRETools
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Brian Gaber
+    Type: String
+  S3BucketName:
+    Description: S3 Bucket Name
+    Default: brian-test-s3-bucket
+    Type: String
+  S3BucketCreation: 
+    Description: S3 Bucket Creation Choice
+    Default: No
+    Type: String
+    AllowedValues: 
+      - Yes
+      - No
+    ConstraintDescription: Must provide an answer.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "AWS S3"
+        Parameters:
+          - S3BucketName
+          - S3BucketCreation
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      S3BucketName:
+        default: "What is the S3 Bucket Name?"
+      S3BucketCreation:
+        default: "Do you want the S3 Bucket to be created?"
+
+Conditions: 
+  CreateS3Bucket: !Equals [ !Ref S3BucketCreation, Yes ]
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateS3Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+
+Outputs:
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
+  S3BucketArn:
+    Description: S3 Bucket Arn
+    Value: !GetAtt S3Bucket.Arn

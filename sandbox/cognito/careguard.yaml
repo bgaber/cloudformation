@@ -1,0 +1,231 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 Cognito Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-cognito-stack --template-body file://cg3-modernization.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Cognito UserPool
+# - Cognito UserPoolClient
+# - Cognito UserPoolDomain
+# - Cognito UserPool Identity Provider
+# - Cognito User Pool Resource Server
+# - ACM certificate
+# - Route 53 Record
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-01-17 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  MetadataS3Bucket:
+    Description: Cognito User Pool IdP Metadata S3 Bucket that contains the SAML file
+    Default: brian-careguard-bucket
+    Type: String
+  SAMLfile:
+    Description: Cognito User Pool IdP SAML Configuration File
+    Default: compucom-saml.xml
+    Type: String
+  UserPoolName:
+    Description: Cognito User Pool Name
+    Default: careguard-test
+    Type: String
+  UserPoolDomain:
+    Description: Cognito User Pool Domain Name Prefix
+    Default: identitytest 
+    Type: String
+  UserPoolAppClientName:
+    Description: Cognito User Pool App Client Name
+    Default: testmfa
+    Type: String
+  UserPoolResourceServerName:
+    Description: Cognito User Pool Resource Server Name
+    Default: cg3-test-backend
+    Type: String
+  HostedZone:
+    Description: The Route 53 Hosted Zone
+    Type: String
+    Default: cldsandbox.com
+  CustomDomainName:
+    Description: The custom domain name
+    Type: String
+    Default: auth.newtest-compucom.cldsandbox.com
+
+Resources:
+  # ACM certificate
+  # Certificate:
+  #   Type: AWS::CertificateManager::Certificate
+  #   Properties:
+  #     DomainName: !Sub '*.${CustomDomainName}'
+  #     SubjectAlternativeNames:
+  #       - !Sub '${CustomDomainName}'
+  #     Tags: 
+  #       - Key: Created
+  #         Value: !Ref CreationDate
+  #       - Key: Creator
+  #         Value: !Ref CreatedBy
+  #       - Key: Application
+  #         Value: !Ref Application
+  #       - Key: Owner
+  #         Value: !Ref Owner
+  #     ValidationMethod: DNS
+
+  # Create CareGuard Cognito UserPool
+  cg3UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+      AdminCreateUserConfig: 
+        AllowAdminCreateUserOnly: True
+        InviteMessageTemplate:
+          EmailMessage: 'Your username is {username} and temporary password is {####}.'
+          EmailSubject: Your temporary password
+          SMSMessage: Your username is {username} and temporary password is {####}. 
+      AutoVerifiedAttributes: 
+        - email
+      EnabledMfas: 
+        - SOFTWARE_TOKEN_MFA
+      LambdaConfig: 
+        PreTokenGeneration: arn:aws:lambda:us-east-1:655690556973:function:careguard-pretoken-generator-test
+        UserMigration: arn:aws:lambda:us-east-1:655690556973:function:careguard-user-migration-test
+      MfaConfiguration: 'ON'
+      Schema:
+        - AttributeDataType: 'Number'
+          Name: cgc
+          NumberAttributeConstraints: 
+            MaxValue: 256
+            MinValue: 1
+          Required: false
+          Mutable: true
+      UsernameAttributes: 
+        - email
+      UsernameConfiguration: 
+        CaseSensitive: False
+      UserPoolName: !Ref UserPoolName
+      UserPoolTags: 
+        Owner: !Ref Owner
+        Application: !Ref Application
+        Created: !Ref CreationDate
+        CreatedBy: !Ref CreatedBy
+      VerificationMessageTemplate: 
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailMessage: Your verification code is {####}.
+        EmailSubject: Your verification code
+        SmsMessage: Your username is {username} and temporary password is {####}.
+
+  # Create CareGuard Cognito User Pool Client
+  cg3UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - aws.cognito.signin.user.admin
+        - profile
+      CallbackURLs:
+        - http://localhost:600/login
+      ClientName: !Ref UserPoolAppClientName
+      LogoutURLs:
+        - http://localhost:600/login
+      PreventUserExistenceErrors: 'ENABLED'
+      SupportedIdentityProviders:
+        - COGNITO
+        - !Ref ccIdentityProvider
+      UserPoolId: !Ref cg3UserPool
+
+  # Create CareGuard Cognito User Pool Domain
+  cg3UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      CustomDomainConfig:
+        CertificateArn: !ImportValue CertArn
+      Domain: !Ref CustomDomainName
+      UserPoolId: !Ref cg3UserPool
+
+  # Create CareGuard Cognito Compucom SAML Identity Provider
+  ccIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      AttributeMapping:
+        Name: firstName
+        'Given Name': firstName
+        'Family Name': lastName
+        Email: emailAddress
+      ProviderDetails:
+        # Works if bucket is public
+        MetadataURL: !Join ["", ["https://", !Ref MetadataS3Bucket, ".s3.amazonaws.com/", !Ref SAMLfile] ]
+        #MetadataURL: https://brian-careguard-bucket.s3.amazonaws.com/compucom-saml.xml
+        # Testing
+        #MetadataURL: file://brian-cg3-bucket/compucom-saml.xml
+      ProviderName: compucom
+      ProviderType: SAML
+      UserPoolId: !Ref cg3UserPool
+
+  # Create CareGuard Cognito User Pool Resource Server
+  cg3ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties: 
+      Identifier: !Ref UserPoolResourceServerName
+      Name: !Ref UserPoolResourceServerName
+      Scopes: 
+        - ScopeDescription: franchise
+          ScopeName: cgf
+        - ScopeDescription: internal
+          ScopeName: cgi
+        - ScopeDescription: partner
+          ScopeName: cgp
+        - ScopeDescription: customer
+          ScopeName: cgc
+      UserPoolId: !Ref cg3UserPool
+
+  # Create Route 53 DNS Record
+  CognitoDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt cg3UserPoolDomain.CloudFrontDistribution
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: Z2X70QKQSE1675
+      Name: !Ref CustomDomainName
+      Type: A
+      
+Outputs:
+  PoolId:
+    Description: Cognito User Pool Identifier
+    Value: !Ref cg3UserPool
+  PoolARN:
+    Description: Cognito User Pool ARN
+    Value:
+      !GetAtt cg3UserPool.Arn
+  DomainCldFrontDist:
+    Description: Cognito User Pool Domain CloudFront Distribution
+    Value:
+      !GetAtt cg3UserPoolDomain.CloudFrontDistribution
+  DNSname:
+    Description: Route 53 DNS Name
+    Value: !Ref CognitoDNSRecord

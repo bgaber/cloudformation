@@ -1,0 +1,646 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 API Gateway Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name nlp-apigw-stack --template-body file://nlp-api-gw-test.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - IAM Role
+# - IAM Policy
+# - ECS TaskDefinition
+# - ECS Cluster
+# - EC2 Security Group
+# - ECS Service
+# - AutoScaling
+# - ELB
+# - ELB Listener
+# - ELB Target Group
+# - API GW Stuff
+# - Route 53 Record for API GW Custom Domain
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-22 08:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  VPCIdValue:
+    Description: VPC ID
+    Default: vpc-15df6372
+    Type: AWS::EC2::VPC::Id
+  PublicSubnets:
+    Description: Public Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-2fd68d77, subnet-395d0413"
+  PrivateSubnets:
+    Description: Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-16d58e4e, subnet-bc5d0496"
+  ListenPort:
+    Description: Internal Listen Port
+    Default: 8081
+    Type: Number
+    MinValue: 8081
+    MaxValue: 9999
+  AWSaccount:
+    Description: The AWS Account for this deployment
+    Type: String
+    Default: 300899438431
+    MinLength: 12
+    MaxLength: 12
+    AllowedPattern: ^[0-9]*$
+  R53HostedZoneName:
+    Description: The Route 53 Hosted Zone Name For careguard.net
+    Type: String
+    Default: careguard.net
+    MinLength: 10
+    AllowedPattern: ^[a-zA-Z0-9\.]*$
+  R53HostedZoneId:
+    Description: The Route 53 Hosted Zone Id For careguard.net
+    Type: AWS::Route53::HostedZone::Id
+    Default: Z18BORQC57TNAS
+    MinLength: 10
+    AllowedPattern: ^[A-Z0-9]*$
+  CustomDomainName:
+    Description: The API Gateway Custom Domain name
+    Type: String
+    Default: api-test.careguard.net
+    MinLength: 10
+    AllowedPattern: ^[a-zA-Z0-9\-\.]*$
+  ApiGwNonAuthRoute:
+    Description: The API Gateway non-authorized route
+    Type: String
+    Default: api
+    MinLength: 3
+    AllowedPattern: ^[a-zA-Z0-9]*$
+  ApiGwAuthRoute:
+    Description: The API Gateway authorized route
+    Type: String
+    Default: careguard
+    MinLength: 3
+    AllowedPattern: ^[a-zA-Z0-9]*$
+  CertificateARN:
+    Description: The ACM Certificate ARN for *.careguard.net
+    Type: String
+    Default: arn:aws:acm:us-east-1:300899438431:certificate/04617f26-a812-4fb8-91c8-e5f44761997d
+  Environment:
+    Description: The environment
+    Type: String
+    Default: test
+    AllowedValues:
+      - prod
+      - test
+      - dev
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "API Gateway"
+        Parameters:
+          - R53HostedZoneName
+          - R53HostedZoneId
+          - CustomDomainName
+          - ApiGwNonAuthRoute
+          - ApiGwAuthRoute
+      - Label:
+          default: "Networking"
+        Parameters:
+          - VPCIdValue
+          - PublicSubnets
+          - PrivateSubnets
+          - ListenPort
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      VPCIdValue:
+        default: "What is the VPC ID"
+      PublicSubnets:
+        default: "What are the Public Subnets"
+      PrivateSubnets:
+        default: "What are the Private Subnets"
+      ListenPort:
+        default: "What is the TCP Port on which the API Gateway listens"
+      AWSaccount:
+        default: "What is the AWS Account for this deployment"
+      ApiGwNonAuthRoute:
+        default: "What is the API Gateway non-authorized route (do not include the /)"
+      ApiGwAuthRoute:
+        default: "What is the API Gateway authorized route (do not include the /)"
+      Environment:
+        default: "What is the environment"
+
+
+Resources:
+  cgecsexecutionrole3104325A:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      RoleName: cg-test-ecs-execution-role
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  cgecsexecutionroleDefaultPolicy1B3E8628:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+            Effect: Allow
+            #Resource: arn:aws:ecr:us-east-1:300899438431:repository/cg3-backend
+            Resource: !Join ["", ["arn:aws:ecr:us-east-1:", !Ref AWSaccount, ":repository/cg3-backend"] ]
+          - Action: ecr:GetAuthorizationToken
+            Effect: Allow
+            Resource: "*"
+          - Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            #Resource: arn:aws:logs:us-east-1:300899438431:log-group:/cg/api:*
+            Resource: !Join ["", ["arn:aws:logs:us-east-1:", !Ref AWSaccount, ":log-group:/cg/api:*"] ]
+          - Action: ssm:GetParameters
+            Effect: Allow
+            Resource: !Join ["", ["arn:aws:ssm:us-east-1:", !Ref AWSaccount, ":parameter/cg3/", !Ref Environment, "/*"] ]
+        Version: "2012-10-17"
+      PolicyName: cgecsexecutionroleDefaultPolicy1B3E8628
+      Roles:
+        - Ref: cgecsexecutionrole3104325A
+
+  cgecstaskroleE8B70FA1:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      RoleName: cg-test-ecs-task-role
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  cgapitaskdef56AED002:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Essential: true
+          Image:
+            Fn::Join:
+              - ""
+              - - Ref: AWSaccount
+                - .dkr.ecr.us-east-1.
+                - Ref: AWS::URLSuffix
+                - /cg3-backend:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-group: /cg/api
+              awslogs-stream-prefix: ecs
+              awslogs-region: us-east-1
+          Name: cg-api-container
+          PortMappings:
+            - ContainerPort: !Ref ListenPort
+              Protocol: tcp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Fn::GetAtt:
+          - cgecsexecutionrole3104325A
+          - Arn
+      Family: cg-api-task-def
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn:
+        Fn::GetAtt:
+          - cgecstaskroleE8B70FA1
+          - Arn
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  cgapiclusterE644EA8D:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: cg-api-cluster
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  cgapiservicesg11D68C1D:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Careguard-Test-Backend-Stack/cg-api-service-sg
+      GroupName: cg-api-service-sg
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.251.48.0/20
+          #Description: from 10.251.48.0/20:8081
+          Description: !Join ["", ["from 10.251.48.0/20:", !Ref ListenPort] ]
+          FromPort: !Ref ListenPort
+          IpProtocol: tcp
+          ToPort: !Ref ListenPort
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      VpcId: !Ref VPCIdValue
+
+  cgapiserviceServiceB1053060:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Ref: cgapiclusterE644EA8D
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      EnableECSManagedTags: false
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: cg-api-container
+          ContainerPort: !Ref ListenPort
+          TargetGroupArn:
+            Ref: cgbackendnlbcgapilistenercgapitgGroup260247D9
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - Fn::GetAtt:
+                - cgapiservicesg11D68C1D
+                - GroupId
+          Subnets: !Ref PrivateSubnets
+      ServiceName: cg-api-service
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TaskDefinition:
+        Ref: cgapitaskdef56AED002
+    DependsOn:
+      - cgbackendnlbcgapilistenercgapitgGroup260247D9
+      - cgbackendnlbcgapilistener87AAFD24
+
+  cgapiserviceTaskCountTarget594F2647:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 5
+      MinCapacity: 1
+      ResourceId:
+        Fn::Join:
+          - ""
+          - - service/
+            - Ref: cgapiclusterE644EA8D
+            - /
+            - Fn::GetAtt:
+                - cgapiserviceServiceB1053060
+                - Name
+      #RoleARN: arn:aws:iam::300899438431:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      RoleARN: !Join ["", ["arn:aws:iam::", !Ref AWSaccount, ":role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService"] ]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  cgapiserviceTaskCountTargetCpuScaling4D8AAAEB:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: CareguardTestBackendStackcgapiserviceTaskCountTargetCpuScaling24982F91
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId:
+        Ref: cgapiserviceTaskCountTarget594F2647
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        TargetValue: 50
+
+  cgbackendnlb379F48F0:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: cg-backend-nlb
+      Scheme: internal
+      Subnets: !Ref PublicSubnets
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      Type: network
+
+  cgbackendnlbcgapilistener87AAFD24:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: cgbackendnlbcgapilistenercgapitgGroup260247D9
+          Type: forward
+      LoadBalancerArn:
+        Ref: cgbackendnlb379F48F0
+      Port: !Ref ListenPort
+      Protocol: TCP
+
+  cgbackendnlbcgapilistenercgapitgGroup260247D9:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cg-api-tg
+      Port: !Ref ListenPort
+      Protocol: TCP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "300"
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TargetType: ip
+      VpcId: !Ref VPCIdValue
+
+  cgapivpclink787B45D8:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: CareguardTestBackendStackcgapivpclinkC531F71C
+      SubnetIds: !Ref PrivateSubnets
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - cgapiservicesg11D68C1D
+            - GroupId
+      Tags: 
+        Owner: !Ref Owner
+        Application: !Ref Application
+        Created: !Ref CreationDate
+        Creator: !Ref CreatedBy
+
+  cgapi965E1B5C:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      CorsConfiguration:
+        AllowCredentials: true
+        AllowHeaders:
+          - Content-Type
+          - X-Amz-Date
+          - Authorization
+          - X-Api-Key
+        AllowMethods:
+          - OPTIONS
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+      Description: CareGuard Test API
+      Name: cg-api
+      ProtocolType: HTTP
+      Tags: 
+        Owner: !Ref Owner
+        Application: !Ref Application
+        Created: !Ref CreationDate
+        Creator: !Ref CreatedBy
+
+  cgapiDefaultStageB63DED7E:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      StageName: $default
+      AutoDeploy: true
+      Tags: 
+        Owner: !Ref Owner
+        Application: !Ref Application
+        Created: !Ref CreationDate
+        Creator: !Ref CreatedBy
+
+  cgapiANYproxycgnlbintegrationE17EE301:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      IntegrationType: HTTP_PROXY
+      ConnectionId:
+        Ref: cgapivpclink787B45D8
+      ConnectionType: VPC_LINK
+      IntegrationMethod: ANY
+      IntegrationUri:
+        Ref: cgbackendnlbcgapilistener87AAFD24
+      PayloadFormatVersion: "1.0"
+
+  CareGuardApiGwAuthAnyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      #RouteKey: ANY /careguard/{proxy+}
+      RouteKey: !Join ["", ["ANY /", !Ref ApiGwAuthRoute, "/{proxy+}"] ]
+      AuthorizationType: JWT
+      AuthorizerId:
+        Ref: cgapicgapiauthorizer219C7FB8
+      Target:
+        Fn::Join:
+          - ""
+          - - integrations/
+            - Ref: cgapiANYproxycgnlbintegrationE17EE301
+
+  CareGuardApiGwAuthOptionsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      #RouteKey: ANY /careguard/{proxy+}
+      RouteKey: !Join ["", ["OPTIONS /", !Ref ApiGwAuthRoute, "/{proxy+}"] ]
+      Target:
+        Fn::Join:
+          - ""
+          - - integrations/
+            - Ref: cgapiANYproxycgnlbintegrationE17EE301
+
+  CareGuardApiGwNonAuthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      #RouteKey: ANY /api/{proxy+}
+      RouteKey: !Join ["", ["ANY /", !Ref ApiGwNonAuthRoute, "/{proxy+}"] ]
+      Target:
+        Fn::Join:
+          - ""
+          - - integrations/
+            - Ref: cgapiANYproxycgnlbintegrationE17EE301
+
+  cgapicgapiauthorizer219C7FB8:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId:
+        Ref: cgapi965E1B5C
+      AuthorizerType: JWT
+      Name: cg-api-authorizer
+      IdentitySource:
+        - $request.header.Authorization
+      JwtConfiguration:
+        Audience:
+          - !ImportValue ExCG3TestUserPoolClientId
+        Issuer: !ImportValue ExCG3TestUserPoolProviderURL
+
+  CareGuardApiGwDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref CustomDomainName
+      DomainNameConfigurations:
+        - CertificateArn: !Ref CertificateARN
+          CertificateName: CareGuardCertificate
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+      Tags: {
+        Owner: !Ref Owner,
+        Application: !Ref Application,
+        Created: !Ref CreationDate,
+        Creator: !Ref CreatedBy
+      }
+
+  CareGuardApiGwMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      DomainName: !Ref CustomDomainName
+      ApiId: !Ref cgapi965E1B5C
+      Stage: !Ref cgapiDefaultStageB63DED7E
+
+  CareGuardApiGwDomainNameDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt CareGuardApiGwDomainName.RegionalDomainName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt CareGuardApiGwDomainName.RegionalHostedZoneId
+      #HostedZoneName: !Ref R53HostedZoneName
+      HostedZoneId: !Ref R53HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+
+Outputs:
+  ECSClusterARN:
+    Description: ECS Cluster ARN
+    Value: !GetAtt cgapiclusterE644EA8D.Arn
+  ECSTaskDefnARN:
+    Description: ECS Task Definition ARN
+    Value: !Ref cgapitaskdef56AED002
+  ECSServiceARN:
+    Description: ECS Service ARN
+    Value: !Ref cgapiserviceServiceB1053060
+  CognitoUserPoolClientId:
+    Description: Exported Cognito User Pool Client Id
+    Value: !ImportValue ExCG3TestUserPoolClientId
+  NetworkLoadBalancerDNS:
+    Description: NLB Name
+    Value:
+      Fn::GetAtt:
+        - cgbackendnlb379F48F0
+        - DNSName
+  ApiGwId:
+    Description: API Gateway Id
+    Value: !Ref cgapi965E1B5C
+  ApiGwEndPt:
+    Description: API Gateway End Point
+    Value: !GetAtt cgapi965E1B5C.ApiEndpoint
+  ApiGwStageId:
+    Description: API Gateway Stage Id
+    Value: !Ref cgapiDefaultStageB63DED7E
+
+  ApiGwUrl:
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Ref: cgapi965E1B5C
+          - .execute-api.us-east-1.
+          - Ref: AWS::URLSuffix
+          - /
+
+  ApiGwDomainName:
+    Description: API Gateway Custom Domain Name
+    Value: !GetAtt CareGuardApiGwDomainName.RegionalDomainName
+
+  ApiGwDomainNameRegionalHostedZoneId:
+    Description: API Gateway Custom Domain Regional Hosted Zone Id
+    Value: !GetAtt CareGuardApiGwDomainName.RegionalHostedZoneId

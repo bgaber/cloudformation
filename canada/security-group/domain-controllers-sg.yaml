@@ -1,0 +1,307 @@
+---
+# Brian Gaber
+# Security Group Cloudformation Template
+# Creates Security Group for SMARTS
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-06 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Domain Controllers
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Chris LaFronte
+    Type: String
+  Incident:
+    Description: Service Now Incident
+    Default: CHG200403
+    Type: String
+  Customer:
+    Description: Name of Customer
+    Default: Production
+    Type: String
+  VpcId:
+    Description: New VPC Id
+    Default: vpc-8ae1c9e3
+    Type: AWS::EC2::VPC::Id
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+
+Resources:
+  DomConSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Windows Domain Controllers SG
+      GroupName: !Join [" ", [!Ref Application, "SG in", !Ref Customer, "VPC"] ]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.98.3.49/32
+          Description: RPC endpoint mapper
+          IpProtocol: tcp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.98.3.49/32
+          Description: RPC endpoint mapper
+          IpProtocol: udp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.98.3.49/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: tcp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.98.3.49/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: udp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.98.3.49/32
+          Description: NetBIOS datagram service
+          IpProtocol: udp
+          FromPort: 138
+          ToPort: 138
+        - CidrIp: 10.98.3.49/32
+          Description: NetBIOS session service
+          IpProtocol: tcp
+          FromPort: 139
+          ToPort: 139
+        - CidrIp: 10.98.3.49/32
+          Description: RPC dynamic assignment
+          IpProtocol: tcp
+          FromPort: 49152
+          ToPort: 65535
+        - CidrIp: 10.98.3.49/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: tcp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.98.3.49/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: udp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.98.3.49/32
+          Description: LDAP over SSL
+          IpProtocol: tcp
+          FromPort: 636
+          ToPort: 636
+        - CidrIp: 10.98.3.49/32
+          Description: Global catalog LDAP
+          IpProtocol: tcp
+          FromPort: 3268
+          ToPort: 3268
+        - CidrIp: 10.98.3.49/32
+          Description: Kerberos
+          IpProtocol: tcp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.98.3.49/32
+          Description: Kerberos
+          IpProtocol: udp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.98.3.49/32
+          Description: DNS
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 10.98.3.49/32
+          Description: DNS
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 10.98.3.50/32
+          Description: RPC endpoint mapper
+          IpProtocol: tcp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.98.3.50/32
+          Description: RPC endpoint mapper
+          IpProtocol: udp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.98.3.50/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: tcp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.98.3.50/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: udp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.98.3.50/32
+          Description: NetBIOS datagram service
+          IpProtocol: udp
+          FromPort: 138
+          ToPort: 138
+        - CidrIp: 10.98.3.50/32
+          Description: NetBIOS session service
+          IpProtocol: tcp
+          FromPort: 139
+          ToPort: 139
+        - CidrIp: 10.98.3.50/32
+          Description: RPC dynamic assignment
+          IpProtocol: tcp
+          FromPort: 49152
+          ToPort: 65535
+        - CidrIp: 10.98.3.50/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: tcp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.98.3.50/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: udp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.98.3.50/32
+          Description: LDAP over SSL
+          IpProtocol: tcp
+          FromPort: 636
+          ToPort: 636
+        - CidrIp: 10.98.3.50/32
+          Description: Global catalog LDAP
+          IpProtocol: tcp
+          FromPort: 3268
+          ToPort: 3268
+        - CidrIp: 10.98.3.50/32
+          Description: Kerberos
+          IpProtocol: tcp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.98.3.50/32
+          Description: Kerberos
+          IpProtocol: udp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.98.3.50/32
+          Description: DNS
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 10.98.3.50/32
+          Description: DNS
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 10.16.10.178/32
+          Description: RPC endpoint mapper
+          IpProtocol: tcp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.16.10.178/32
+          Description: RPC endpoint mapper
+          IpProtocol: udp
+          FromPort: 135
+          ToPort: 135
+        - CidrIp: 10.16.10.178/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: tcp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.16.10.178/32
+          Description: Network basic input/output system (NetBIOS) name service
+          IpProtocol: udp
+          FromPort: 137
+          ToPort: 137
+        - CidrIp: 10.16.10.178/32
+          Description: NetBIOS datagram service
+          IpProtocol: udp
+          FromPort: 138
+          ToPort: 138
+        - CidrIp: 10.16.10.178/32
+          Description: NetBIOS session service
+          IpProtocol: tcp
+          FromPort: 139
+          ToPort: 139
+        - CidrIp: 10.16.10.178/32
+          Description: RPC dynamic assignment
+          IpProtocol: tcp
+          FromPort: 49152
+          ToPort: 65535
+        - CidrIp: 10.16.10.178/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: tcp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.16.10.178/32
+          Description: Server message block (SMB) over IP (Microsoft-DS)
+          IpProtocol: udp
+          FromPort: 445
+          ToPort: 445
+        - CidrIp: 10.16.10.178/32
+          Description: LDAP over SSL
+          IpProtocol: tcp
+          FromPort: 636
+          ToPort: 636
+        - CidrIp: 10.16.10.178/32
+          Description: Global catalog LDAP
+          IpProtocol: tcp
+          FromPort: 3268
+          ToPort: 3268
+        - CidrIp: 10.16.10.178/32
+          Description: Kerberos
+          IpProtocol: tcp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.16.10.178/32
+          Description: Kerberos
+          IpProtocol: udp
+          FromPort: 88
+          ToPort: 88
+        - CidrIp: 10.16.10.178/32
+          Description: DNS
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+        - CidrIp: 10.16.10.178/32
+          Description: DNS
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+      Tags:
+        - Key: Name
+          Value: !Join [" ", [!Ref Application, "SG in", !Ref Customer, "VPC"] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref VpcId
+  DomConSecurityGroup:
+    Description: Windows Domain Controller Security Group
+    Value: !Ref DomConSecurityGroup

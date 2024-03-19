@@ -1,0 +1,1104 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+# Creates SGs, LBs between IG and NLBs, but does not create NLB Listeners or Target Groups.
+# Also, does not create the SGs for the DS servers.
+# NLB Listeners or Target Groups are created in Phase 2 when the IP addresses of the NLB are known.
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-04-08 08:45:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  testForgeRockVpc:
+    Description: Test ForgeRock Public 161.108.205.0/24 CIDR VPC
+    Default: vpc-5f7cfe26
+    Type: String
+  testForgeRockVpcPubSubnet1a:
+    Description: Test ForgeRock 161.108.205.0/26 Public Subnet1a
+    Default: subnet-a1bf06fb
+    Type: String
+  testForgeRockVpcPubSubnet1b:
+    Description: Test ForgeRock 161.108.205.64/26 Public Subnet1b
+    Default: subnet-463d2f23
+    Type: String
+  testForgeRockVpcPrivSubnet1a:
+    Description: Test ForgeRock 161.108.205.128/26 Private Subnet1a
+    Default: subnet-dfb10885
+    Type: String
+  testForgeRockVpcPrivSubnet1b:
+    Description: Test ForgeRock 161.108.205.192/26 Private Subnet1b
+    Default: subnet-2b34264e
+    Type: String
+  testIG1EC2:
+    Description: Test ForgeRock IG-1 Server Instance Id
+    Default: i-0a67253173f105bcd
+    Type: String
+  testIG2EC2:
+    Description: Test ForgeRock IG-2 Server Instance Id
+    Default: i-0f82e2d4bd29f4202
+    Type: String
+  testIDM1EC2:
+    Description: Test ForgeRock IDM-1 Server Instance Id
+    Default: i-02465cb361212c208
+    Type: String
+  testIDM1IPaddr:
+    Description: Test ForgeRock IDM-1 Server IP Address
+    Default: 161.108.205.183/32
+    Type: String
+  testIDM2EC2:
+    Description: Test ForgeRock IDM-2 Server Instance Id
+    Default: i-0b9bdf624fdbc6c4a
+    Type: String
+  testIDM2IPaddr:
+    Description: Test ForgeRock IDM-2 Server IP Address
+    Default: 161.108.205.239/32
+    Type: String
+  testAM1EC2:
+    Description: Test ForgeRock AM-1 Server Instance Id
+    Default: i-04904ee158dd68250
+    Type: String
+  testAM2EC2:
+    Description: Test ForgeRock AM-2 Server Instance Id
+    Default: i-0350d25348594e98b
+    Type: String
+  FrDplyEC2Ip:
+    Description: ForgeRock Deployment Server IP Address
+    Default: 161.108.205.156/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  testFRSG:
+    Description: Test ForgeRock Security Group
+    Default: sg-b7f9e7c3
+    Type: String
+  testAnyConnSG:
+    Description: Test AnyConnect Security Group
+    Default: sg-035ebd42ab8a3acb6
+    Type: String
+  testRHCapSG:
+    Description: Test Redhat Capsule Security Group
+    Default: sg-0d1f62d6e89f9af59
+    Type: String
+  certArn:
+    Description: ACM Certificate ARN
+    Default: arn:aws:acm:us-east-1:300899438431:certificate/d889c399-d899-487b-808e-d63fa95d4ee9
+    Type: String
+  sslPolicyParam:
+    Description: Load Balancer SSL Policy
+    Default: ELBSecurityPolicy-TLS13-1-2-2021-06
+    Type: String
+
+Resources:  
+  testIgAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from the Internet
+      GroupName: test-ig-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: allow https access from Internet
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  testIntIgAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from Internal CompuCom
+      GroupName: test-int-ig-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.0.0.0/8
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 172.16.0.0/12
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 192.168.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 161.108.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 150.124.0.0/16
+          Description: allow https access to Service Now
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  testIgSvrSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow https from IG ALB
+      GroupName: test-fr-ig-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.0/14
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 131.99.0.0/16
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: allow ssh access from Shared
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  securitygroupigSvrfromFRTestsecuritygroupigAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow https access from IG ALB
+      FromPort: 8443
+      GroupId:
+        Fn::GetAtt:
+          - testIgSvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIgAlbSecurityGroup
+          - GroupId
+      ToPort: 8443
+
+  securitygroupigSvrfromFRTestsecuritygroupIntigAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow https access from Internal IG ALB
+      FromPort: 8443
+      GroupId:
+        Fn::GetAtt:
+          - testIgSvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIntIgAlbSecurityGroup
+          - GroupId
+      ToPort: 8443
+
+  testIdmAmAlbsecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow https access from IG Server to IDM and AM ALB
+      GroupName: test-idm-am-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  securitygroupIdmAmAlbfromFRTestsecuritygroupIgSvr:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow https access from IG Server to IDM and AM ALB
+      FromPort: 8443
+      GroupId:
+        Fn::GetAtt:
+          - testIdmAmAlbsecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIgSvrSecurityGroup
+          - GroupId
+      ToPort: 8443
+
+  testIdmSvrsecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow https access from IDM ALB
+      GroupName: test-fr-idm-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.0/14
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 131.99.0.0/16
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: allow ssh access from Shared
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  securitygroupIdmSvrfromFRTestsecuritygroupIdmAmAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow https access from IDM ALB
+      FromPort: 8443
+      GroupId:
+        Fn::GetAtt:
+          - testIdmSvrsecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIdmAmAlbsecurityGroup
+          - GroupId
+      ToPort: 8443
+
+  testAmSvrsecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow https access from AM ALB
+      GroupName: test-fr-am-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.0/14
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 131.99.0.0/16
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: allow ssh access from Shared
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  securitygroupAmSvrfromFRTestsecuritygroupIdmAmAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow https access from AM ALB
+      FromPort: 8443
+      GroupId:
+        Fn::GetAtt:
+          - testAmSvrsecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIdmAmAlbsecurityGroup
+          - GroupId
+      ToPort: 8443
+
+  testRDSsecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to RDS from IDM Server
+      GroupName: test-rds-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: testForgeRockVpc
+
+  securitygrouprdsfromFRTestsecuritygroupidm:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow db access from IDM Server
+      FromPort: 3306
+      GroupId:
+        Fn::GetAtt:
+          - testRDSsecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - testIdmSvrsecurityGroup
+          - GroupId
+      ToPort: 3306
+
+  TestIgAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: test-alb-fr-ig-internet
+      Scheme: internet-facing
+      SecurityGroups:
+        - Fn::GetAtt:
+            - testIgAlbSecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: testForgeRockVpcPubSubnet1a
+        - Ref: testForgeRockVpcPubSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+
+  TestIgAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: TestIgAppLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: TestIgAppLdBal
+      Certificates:
+        - CertificateArn: !Ref certArn
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: !Ref sslPolicyParam
+
+  TestIgAppLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openig/ping
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Name: test-tg-fr-ig
+      Port: 8443
+      Protocol: HTTPS
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes: 
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+      Targets:
+        - Id: !Ref testIG1EC2
+          Port: 8443
+        - Id: !Ref testIG2EC2
+          Port: 8443
+      TargetType: instance
+      VpcId:
+        Ref: testForgeRockVpc
+
+  TestIntIgAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: test-int-alb-fr-ig-internal
+      Scheme: internal
+      SecurityGroups:
+        - Fn::GetAtt:
+            - testIntIgAlbSecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+
+  TestIntIgAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: TestIntIgAppLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: TestIntIgAppLdBal
+      Certificates:
+        - CertificateArn: !Ref certArn
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: !Ref sslPolicyParam
+
+  TestIntIgAppLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openig/ping
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Name: test-int-tg-fr-ig
+      Port: 8443
+      Protocol: HTTPS
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes: 
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+      Targets:
+        - Id: !Ref testIG1EC2
+          Port: 8443
+        - Id: !Ref testIG2EC2
+          Port: 8443
+      TargetType: instance
+      VpcId:
+        Ref: testForgeRockVpc
+
+  TestIdmAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: test-alb-fr-idm-internal
+      Scheme: internal
+      SecurityGroups:
+        - Fn::GetAtt:
+            - testIdmAmAlbsecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+
+  TestIdmAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: TestIdmAppLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: TestIdmAppLdBal
+      Certificates:
+        - CertificateArn: !Ref certArn
+      Port: 8443
+      Protocol: HTTPS
+      SslPolicy: !Ref sslPolicyParam
+
+  TestIdmAppLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openidm/info/ping
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200,401
+      Name: test-tg-fr-idm
+      Port: 8443
+      Protocol: HTTPS
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes: 
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+      Targets:
+        - Id: !Ref testIDM1EC2
+          Port: 8443
+        - Id: !Ref testIDM2EC2
+          Port: 8443
+      TargetType: instance
+      VpcId:
+        Ref: testForgeRockVpc
+
+  TestAmAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: test-alb-fr-am-internal
+      Scheme: internal
+      SecurityGroups:
+        - Fn::GetAtt:
+            - testIdmAmAlbsecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+
+  TestAmAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TestAmAppLdBalTgtGrp1
+                Weight: 1
+              - TargetGroupArn: !Ref TestAmAppLdBalTgtGrp2
+                Weight: 1
+            TargetGroupStickinessConfig: 
+              DurationSeconds: 86400
+              Enabled: true
+      LoadBalancerArn:
+        Ref: TestAmAppLdBal
+      Certificates:
+        - CertificateArn: !Ref certArn
+      Port: 8443
+      Protocol: HTTPS
+      SslPolicy: !Ref sslPolicyParam
+
+  TestAmAppLdBalTgtGrp1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openam/json/health/live
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Name: test-tg-fr-am-1
+      Port: 8443
+      Protocol: HTTPS
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Targets:
+        - Id: !Ref testAM1EC2
+          Port: 8443
+      TargetType: instance
+      VpcId:
+        Ref: testForgeRockVpc
+
+  TestAmAppLdBalTgtGrp2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openam/json/health/live
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Name: test-tg-fr-am-2
+      Port: 8443
+      Protocol: HTTPS
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Targets:
+        - Id: !Ref testAM2EC2
+          Port: 8443
+      TargetType: instance
+      VpcId:
+        Ref: testForgeRockVpc
+
+  TestBlueNetLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+      Name: test-nlb-ds-usr-internal
+      Scheme: internal
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: network
+
+  TestBlueExtNetLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+      Name: test-nlb-ds-usr-external
+      Scheme: internet-facing
+      Subnets:
+        - Ref: testForgeRockVpcPubSubnet1a
+        - Ref: testForgeRockVpcPubSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: network
+
+  TestGreenNetLdBal1:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+      Name: test-nlb-ds-cfg-1-internal
+      Scheme: internal
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: network
+  TestGreenNetLdBal2:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+      Name: test-nlb-ds-cfg-2-internal
+      Scheme: internal
+      Subnets:
+        - Ref: testForgeRockVpcPrivSubnet1a
+        - Ref: testForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: network
+
+Outputs:
+  VPCID:
+    Description: Test ForgeRock VPC Identifier
+    Value: !Ref testForgeRockVpc
+  PrivSubnet1A:
+    Description: Test ForgeRock Private Subnet1a
+    Value: !Ref testForgeRockVpcPrivSubnet1a
+    Export:
+      Name: TestPrivSubnet1A
+  PrivSubnet1B:
+    Description: Test ForgeRock Private Subnet1b
+    Value: !Ref testForgeRockVpcPrivSubnet1b
+    Export:
+      Name: TestPrivSubnet1B
+  IdGwSvrSecurityGroup:
+    Description: ForgeRock Identity Gateway Server Security Group
+    Value: !Ref testIgSvrSecurityGroup
+    Export:
+      Name: TestIdGwSvrVPCSecurityGroup
+  IdmSvrSecurityGroup:
+    Description: ForgeRock Identity Management Server Security Group
+    Value: !Ref testIdmSvrsecurityGroup
+    Export:
+      Name: TestIdmSvrVPCSecurityGroup
+  AmSvrSecurityGroup:
+    Description: ForgeRock Access Management Server Security Group
+    Value: !Ref testAmSvrsecurityGroup
+    Export:
+      Name: TestAmSvrVPCSecurityGroup
+  RDSmysqlSecurityGroup:
+    Description: RDS VPC Security Group
+    Value: !Ref testRDSsecurityGroup
+    Export:
+      Name: TestRDSVPCSecurityGroup
+  RDSmysqlSecurityGroupId:
+    Description: RDS VPC Security Group Id
+    Value:
+      !GetAtt testRDSsecurityGroup.GroupId
+  IGextALBname:
+    Description: Full name of the IG Internet Facing ALB
+    Value:
+      !GetAtt TestIgAppLdBal.LoadBalancerFullName
+  IGextALBDnsName:
+    Description: DNS name of the IG Internet Facing ALB
+    Value:
+      !GetAtt TestIgAppLdBal.DNSName
+  IGintALBname:
+    Description: Full name of the IG Internal ALB
+    Value:
+      !GetAtt TestIntIgAppLdBal.LoadBalancerFullName
+  IGintALBDnsName:
+    Description: DNS name of the IG Internal ALB
+    Value:
+      !GetAtt TestIntIgAppLdBal.DNSName
+  IDMALBname:
+    Description: Full name of the IDM Internal ALB
+    Value:
+      !GetAtt TestIdmAppLdBal.LoadBalancerFullName
+  IDMALBDnsName:
+    Description: DNS name of the IDM Internal ALB
+    Value:
+      !GetAtt TestIdmAppLdBal.DNSName
+  AMALBname:
+    Description: Full name of the AM Internal ALB
+    Value:
+      !GetAtt TestAmAppLdBal.LoadBalancerFullName
+  AMALBDnsName:
+    Description: DNS name of the AM Internal ALB
+    Value:
+      !GetAtt TestAmAppLdBal.DNSName
+  BlueNLB:
+    Description: ForgeRock Blue NLB
+    Value: !Ref TestBlueNetLdBal
+    Export:
+      Name: TestBlueNlbArn
+  BlueNLBname:
+    Description: Full name of the Blue Internal NLB
+    Value:
+      !GetAtt TestBlueNetLdBal.LoadBalancerFullName
+  BlueNLBDnsName:
+    Description: DNS name of the Blue Internal NLB
+    Value:
+      !GetAtt TestBlueNetLdBal.DNSName
+  BlueExtNLB:
+    Description: ForgeRock Blue Internet Facing NLB
+    Value: !Ref TestBlueExtNetLdBal
+    Export:
+      Name: TestBlueExtNlbArn
+  BlueExtNLBname:
+    Description: Full name of the Blue Internet Facing NLB
+    Value:
+      !GetAtt TestBlueExtNetLdBal.LoadBalancerFullName
+  BlueExtNLBDnsName:
+    Description: DNS name of the Blue Internet Facing NLB
+    Value:
+      !GetAtt TestBlueExtNetLdBal.DNSName
+  GreenNLB1:
+    Description: ForgeRock Green NLB 1
+    Value: !Ref TestGreenNetLdBal1
+    Export:
+      Name: TestGreenNlb1Arn
+  GreenNLB1name:
+    Description: Full name of the Green Internal NLB 1
+    Value:
+      !GetAtt TestGreenNetLdBal1.LoadBalancerFullName
+  GreenNLB1DnsName:
+    Description: DNS name of the Green Internal NLB 1
+    Value:
+      !GetAtt TestGreenNetLdBal1.DNSName
+  GreenNLB2:
+    Description: ForgeRock Green NLB 2
+    Value: !Ref TestGreenNetLdBal2
+    Export:
+      Name: TestGreenNlb2Arn
+  GreenNLB2name:
+    Description: Full name of the Green Internal NLB 2
+    Value:
+      !GetAtt TestGreenNetLdBal2.LoadBalancerFullName
+  GreenNLB2DnsName:
+    Description: DNS name of the Green Internal NLB 2
+    Value:
+      !GetAtt TestGreenNetLdBal2.DNSName
+  StacksRegion:
+    Value: !Ref "AWS::Region"

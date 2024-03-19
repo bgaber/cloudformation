@@ -1,0 +1,274 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 S3 and CloudFront Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-s3-cf-stack --template-body file://cg3-s3-cf.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - S3 Bucket
+# - S3 Bucket Policy
+# - CloudFront Distribution
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-22 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who executed this CloudFormation template
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  CFS3Bucket:
+    Description: CloudFront S3 Bucket
+    Default: careguard-frontend-uat-bucket
+    Type: String
+  R53HostedZoneId:
+    Description: The Route 53 Hosted Zone Id For careguard.net
+    Type: String
+    Default: Z18BORQC57TNAS
+  AlternateDomainNames:
+    Description: The alternate domain names (CNAME) used instead of the CloudFront URL
+    Type: CommaDelimitedList
+    Default: "newuat-vsn.careguard.net, newuat-compucom.careguard.net, newuat-att.careguard.net, newuat-attni.careguard.net, newuat-attcp.careguard.net, newuat-attmss.careguard.net"
+  CertificateARN:
+    Description: The ACM Certificate ARN for *.careguard.net
+    Type: String
+    Default: arn:aws:acm:us-east-1:300899438431:certificate/04617f26-a812-4fb8-91c8-e5f44761997d
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "CloudFront Distribution"
+        Parameters:
+          - CFS3Bucket
+          - AlternateDomainNames
+          - CertificateARN
+      - Label:
+          default: "Route 53"
+        Parameters:
+          - R53HostedZoneId
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      CFS3Bucket:
+        default: "What is the name of the CloudFront S3 bucket?"
+      AlternateDomainNames:
+        default: "What are the Alternate domain names (CNAME) for CloudFront?"
+      CertificateARN:
+        default: "What is the ARN of the ACM certificate for the CloudFront Distribution?"
+      R53HostedZoneId:
+        default: "What is the Id of the Route 53 Hosted Zone?"
+
+Resources:
+  careguardfrontenduatbucketA3B56F4D:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref CFS3Bucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      WebsiteConfiguration:
+        ErrorDocument: error.html
+        IndexDocument: index.html
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    
+  careguardfrontenduatbucketPolicyC4679495:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: careguardfrontenduatbucketA3B56F4D
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+            Effect: Allow
+            Principal:
+              CanonicalUser:
+                Fn::GetAtt:
+                  - WebsiteOAI1BBB0116
+                  - S3CanonicalUserId
+            Resource:
+              - Fn::GetAtt:
+                  - careguardfrontenduatbucketA3B56F4D
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - careguardfrontenduatbucketA3B56F4D
+                        - Arn
+                    - /*
+          - Action: s3:GetObject
+            Effect: Allow
+            Principal:
+              CanonicalUser:
+                Fn::GetAtt:
+                  - WebsiteOAI1BBB0116
+                  - S3CanonicalUserId
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - careguardfrontenduatbucketA3B56F4D
+                      - Arn
+                  - /*
+        Version: "2012-10-17"
+
+  WebsiteOAI1BBB0116:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Allows CloudFront to reach the bucket
+
+  WebsiteDistributionCFDistribution70408E7F:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases: !Ref AlternateDomainNames
+        Comment: Used for CareGuard UAT
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          TargetOriginId: origin1
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            DomainName:
+              Fn::GetAtt:
+                - careguardfrontenduatbucketA3B56F4D
+                - RegionalDomainName
+            Id: origin1
+            S3OriginConfig:
+              OriginAccessIdentity:
+                Fn::Join:
+                  - ""
+                  - - origin-access-identity/cloudfront/
+                    - Ref: WebsiteOAI1BBB0116
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateARN
+          #CloudFrontDefaultCertificate: false
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  # Create Route 53 DNS Alias Records for the CloudFront Distribution URL
+  CognitoDNSRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref R53HostedZoneId
+      RecordSets: 
+        - Name: newuat-vsn.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: newuat-compucom.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: newuat-att.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: newuat-attni.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: newuat-attcp.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: newuat-attmss.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  CFS3BucketName:
+    Description: CloudFront S3 Bucket Name
+    Value: !Ref careguardfrontenduatbucketA3B56F4D
+  S3BucketARN:
+    Description: S3 Bucket ARN
+    Value:
+      !GetAtt careguardfrontenduatbucketA3B56F4D.Arn
+    Export:
+      Name: ExCG3UatS3BucketArn
+  S3BucketDomainName:
+    Description: S3 Bucket Domain Name
+    Value:
+      !GetAtt careguardfrontenduatbucketA3B56F4D.DomainName
+  CloudFrontId:
+    Description: CloudFront Identifier
+    Value: !Ref WebsiteDistributionCFDistribution70408E7F
+    Export:
+      Name: ExCG3UatCloudFrontDistId
+  CloudFrontDomainName:
+    Description: CloudFront Domain Name
+    Value:
+      !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName

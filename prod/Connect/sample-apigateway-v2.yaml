@@ -1,0 +1,206 @@
+Resources:
+
+  MyRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: 'Replication Rest API'
+      Name: 'MySampleAPI'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+  
+  APIGWResource1:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref MyRestApi
+      ParentId: !GetAtt MyRestApi.RootResourceId
+      PathPart: sendmessage
+
+  APIGWResource2:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref MyRestApi
+      ParentId: !GetAtt MyRestApi.RootResourceId
+      PathPart: process-twilio-message
+
+#Methods are associated with resources, and resources are pushed to stages through deployments
+#Define all the methods for the Dev stage
+  PostMethodSendMessagePath:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyRestApi
+      #The resource ID determines which path the method will be add to
+      ResourceId: !Ref APIGWResource1
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration: 
+        Type: MOCK
+
+  GetMethodSendMessagePath:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyRestApi
+      #The resource ID determines which path the method will be add to
+      ResourceId: !Ref APIGWResource1
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration: 
+        Type: MOCK
+
+  PostMethodTwilioPath:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyRestApi
+      #The resource ID determines which path the method will be add to
+      ResourceId: !Ref APIGWResource2
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration: 
+        Type: MOCK
+
+  GetMethodTwilioPath:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyRestApi
+      #The resource ID determines which path the method will be add to
+      ResourceId: !Ref APIGWResource2
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration: 
+        Type: MOCK
+
+#Deployment will push the resources (and methods) to the stages
+  Deployment: 
+    DependsOn: GetMethodTwilioPath
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref MyRestApi
+      Description: 'My first deployment'
+
+#Stages are defined
+  DevStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: 'dev'
+      RestApiId: !Ref MyRestApi
+      DeploymentId: !Ref Deployment
+      #If we need to modify the methods, we need to create and reference a new deployment
+      #DeploymentId: !Ref NewDeployment
+      CacheClusterEnabled: 'false'
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: 'false'
+        - ResourcePath: /sendmessage
+          HttpMethod: 'GET'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+        - ResourcePath: /process-twilio-message
+          HttpMethod: 'POST'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+
+  v1Stage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: 'v1'
+      RestApiId: !Ref MyRestApi
+      DeploymentId: !Ref Deployment
+      CacheClusterEnabled: 'false'
+      CacheClusterSize: 0.5
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: 'false'
+        - ResourcePath: /sendmessage
+          HttpMethod: 'GET'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+        - ResourcePath: /process-twilio-message
+          HttpMethod: 'POST'
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'true'
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+          CachingEnabled: 'false'
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: false
+          LoggingLevel: 'INFO'
+
+#If you need to add additional methods, we first need to create the new methods
+#The ResourceId of the method will point to the path you want to add to
+#We then create a new deployment which will take the changes and push to the stage
+#We lastly update the DeploymentId in the stage definition to point to the new deployment
+
+  # NewDeployment: 
+  #   DependsOn: 
+  #     - DELETEMethodTwilioPath
+  #     - HEADMethodTwilioPath
+  #     - OPTIONSMethodTwilioPath
+  #   Type: AWS::ApiGateway::Deployment
+  #   Properties:
+  #     RestApiId: !Ref MyRestApi
+  #     Description: 'My new deployment'
+
+  # DELETEMethodTwilioPath:
+  #     Type: AWS::ApiGateway::Method
+  #     Properties:
+  #       RestApiId: !Ref MyRestApi
+  #       #The resource ID determines which path the method will be add to
+  #       ResourceId: !Ref APIGWResource2
+  #       HttpMethod: DELETE
+  #       AuthorizationType: NONE
+  #       Integration: 
+  #         Type: MOCK
+  
+  # HEADMethodTwilioPath:
+  #     Type: AWS::ApiGateway::Method
+  #     Properties:
+  #       RestApiId: !Ref MyRestApi
+  #       #The resource ID determines which path the method will be add to
+  #       ResourceId: !Ref APIGWResource2
+  #       HttpMethod: HEAD
+  #       AuthorizationType: NONE
+  #       Integration: 
+  #         Type: MOCK
+
+  # OPTIONSMethodTwilioPath:
+  #     Type: AWS::ApiGateway::Method
+  #     Properties:
+  #       RestApiId: !Ref MyRestApi
+  #       #The resource ID determines which path the method will be add to
+  #       ResourceId: !Ref APIGWResource2
+  #       HttpMethod: OPTIONS
+  #       AuthorizationType: NONE
+  #       Integration: 
+  #         Type: MOCK

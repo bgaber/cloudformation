@@ -1,0 +1,168 @@
+---
+# Brian Gaber
+# Security Group Cloudformation Template
+# Creates Security Group for Monitoring and Reporting
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-04-17 14:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Monitoring and Reporting
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Kevin Smith
+    Type: String
+  Incident:
+    Description: Service Now Incident
+    Default: INC45886319
+    Type: String
+  VpcId:
+    Description: New VPC Id
+    Default: vpc-04348367344d98757
+    Type: AWS::EC2::VPC::Id
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+
+Resources:
+  MnRSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MnR - AWS - IIROC to US
+      GroupName: MnR - AWS - IIROC to US
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.4.61/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.4.61/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.4.61/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+        - CidrIp: 10.16.4.41/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.4.41/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.4.41/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+        - CidrIp: 10.16.4.67/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.4.67/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.4.67/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+        - CidrIp: 10.16.4.58/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.4.58/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.4.58/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+        - CidrIp: 10.16.4.62/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.4.62/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.4.62/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+        - CidrIp: 10.16.18.138/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2010
+          ToPort: 2010
+        - CidrIp: 10.16.18.138/32
+          Description: MnR Configuration Port
+          IpProtocol: tcp
+          FromPort: 2020
+          ToPort: 2020
+        - CidrIp: 10.16.18.138/32
+          Description: MnR Web GUI (https)
+          IpProtocol: tcp
+          FromPort: 48433
+          ToPort: 48433
+      Tags:
+        - Key: Name
+          Value: MnR - AWS - IIROC to US
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Incident
+          Value: !Ref Incident
+      VpcId:
+        Ref: VpcId
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref VpcId
+  MnRSecurityGroupId:
+    Description: MnR Security Group
+    Value: !Ref MnRSecurityGroup

@@ -1,0 +1,99 @@
+---
+# Brian Gaber
+# ALB Security Group Cloudformation Template
+# Creates sScurity Group for BonitaSoft.
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-03-14 13:45:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: BonitaSoft
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Matt Riding
+    Type: String
+  #AlbVpc:
+  #  Description: US-Test 10.251.48.0/20 CIDR VPC
+  #  Default: vpc-15df6372
+  #  Type: String
+  AlbVpc:
+    Description: CA-Prod Multi CIDR VPC
+    Default: vpc-8ae1c9e3
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - Creator
+          - Application
+          - Owner
+
+Resources:  
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from BitBucket
+      GroupName: bonita-bitbucket-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 104.192.136.0/21
+          Description: Enable CICD pipeline management access
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 185.166.140.0/22
+          Description: Enable CICD pipeline management access
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 18.205.93.0/25
+          Description: Enable CICD pipeline management access
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 18.234.32.128/25
+          Description: Enable CICD pipeline management access
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 13.52.5.0/25
+          Description: Enable CICD pipeline management access
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: AlbVpc
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref AlbVpc
+  AlbSecurityGroup:
+    Description: ALB Security Group
+    Value: !Ref AlbSecurityGroup

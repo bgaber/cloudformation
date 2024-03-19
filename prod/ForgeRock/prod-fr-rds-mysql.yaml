@@ -1,0 +1,88 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-03-10 10:50:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  prodForgeRockVpcPrivSubnet1a:
+    Description: Prod ForgeRock 161.108.207.128/26 Private Subnet1a
+    Default: subnet-a1f61bc5
+    Type: String
+  prodForgeRockVpcPrivSubnet1b:
+    Description: Prod ForgeRock 161.108.207.192/26 Private Subnet1b
+    Default: subnet-c66df2ea
+    Type: String
+
+Resources:    
+  prodRDSmysqlSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for prod-fr-rds-mysql database
+      SubnetIds:
+        - !ImportValue ProdPrivSubnet1A
+        - !ImportValue ProdPrivSubnet1B
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+
+  prodRDSmysqlCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      DatabaseName: UserDB
+      DBClusterIdentifier: prod-fr-rds-mysql
+      DBClusterParameterGroupName: default.aurora-mysql5.7
+      DBSubnetGroupName:
+        Ref: prodRDSmysqlSubnets
+      EngineMode: serverless
+      MasterUsername: admin
+      MasterUserPassword: NotShownYouNeedToChange
+      StorageEncrypted: true
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcSecurityGroupIds:
+        - !ImportValue ProdRDSVPCSecurityGroup
+    UpdateReplacePolicy: Snapshot
+    DeletionPolicy: Snapshot
+
+Outputs:
+  DBname:
+    Description: DB Cluster Identifier
+    Value: !Ref prodRDSmysqlCluster
+  dbEndpointAddress:
+    Description: DB Cluster Endpoint Address
+    Value:
+      !GetAtt prodRDSmysqlCluster.Endpoint.Address
+  dbEndpointPort:
+    Description: DB Cluster Endpoint Port
+    Value:
+      !GetAtt prodRDSmysqlCluster.Endpoint.Port

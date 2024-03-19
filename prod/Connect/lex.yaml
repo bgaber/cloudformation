@@ -1,0 +1,152 @@
+---
+# Author: Brian Gaber
+# AWS Lex Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-west-2 cloudformation create-stack --stack-name lex-stack --template-body file://lex.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Lex Bot
+# - Lex Bot Version
+# - Lex Bot Alias
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-11-06 11:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: Brian Gaber Using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Connect
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  Incident:
+    Description: Service Now Incident Number
+    Default: INC47573036
+    Type: String
+  LexBotS3BucketName:
+    Description: Bot Files Import S3 Bucket Name
+    Default: cc-lex-bot-files
+    Type: String
+  LexBotS3ObjectName:
+    Description: Bot JSON File to Import
+    Default: CAMH-3-TJWJUBOTZH-LexJson.zip
+    Type: String
+  LexBotRuntimeRoleArn:
+    Description: Lex Bot Runtime IAM Role
+    Default: arn:aws:iam::122639376858:role/aws-service-role/lexv2.amazonaws.com/AWSServiceRoleForLexV2Bots_8ZMPS7M8GAO
+    Type: String
+  LexBotName:
+    Description: Lex Bot Name
+    Type: String
+    AllowedValues: [CAMH, CKE, Collegium, compucom, Covetrus, DemoConnect, EpicBrokers, FirstEnergy, FirstGroup, Generali]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "AWS Lex"
+        Parameters:
+          - LexBotS3BucketName
+          - LexBotS3ObjectName
+          - LexBotRuntimeRoleArn
+          - LexBotName
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+          - Incident
+    ParameterLabels:
+      LexBotS3BucketName:
+        default: "What is the name of the S3 bucket where Lex Bot import files are found?"
+
+Resources:
+  # 1. Inline bot definition that depends on the IAM role.
+  # The bot definition consists of combining all the child resources into one CFN resource.
+  # This includes Locales, Intents, Slots, and SlotTypes.
+  ConnectTemplateBot:
+    Type: AWS::Lex::Bot
+    Properties:
+      Name: !Ref LexBotName
+      RoleArn: !Ref LexBotRuntimeRoleArn
+      DataPrivacy:
+        ChildDirected: false
+      IdleSessionTTLInSeconds: 1800
+      Description: "Added Additional_Assistance_V2"
+      # We provide a setting that allows you to auto build the locales provided.
+      # Locale builds are also kicked off if you attempt to create a bot version 
+      # that depends on an unbuilt locale.
+      AutoBuildBotLocales: false
+      BotFileS3Location:
+        S3Bucket: !Ref LexBotS3BucketName
+        S3ObjectKey: !Ref LexBotS3ObjectName
+      TestBotAliasTags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+ 
+  # 2. Define a bot version that depends on the DRAFT version of the Lex Bot.
+  # ConnectTemplateBotVersionWithCFN:
+  #   DependsOn: ConnectTemplateBot
+  #   Type: AWS::Lex::BotVersion
+  #   Properties:
+  #     BotId: !Ref ConnectTemplateBot
+  #     BotVersionLocaleSpecification:
+  #       - LocaleId: en_US
+  #         BotVersionLocaleDetails:
+  #           SourceBotVersion: DRAFT
+  #     Description: Connect Version
+ 
+  # 3. Define the alias by providing the bot version created by the 
+  #    AWS::Lex::BotVersion resource above.
+  # FirstBotAliasWithCFN:
+  #   DependsOn: ConnectTemplateBotVersionWithCFN
+  #   Type: AWS::Lex::BotAlias
+  #   Properties:
+  #     BotAliasName: "ProdBotAlias"
+  #     BotAliasTags:
+  #       - Key: Created
+  #         Value: !Ref CreationDate
+  #       - Key: Creator
+  #         Value: !Ref CreatedBy
+  #       - Key: Application
+  #         Value: !Ref Application
+  #       - Key: Owner
+  #         Value: !Ref Owner
+  #       - Key: Incident
+  #         Value: !Ref Incident
+  #     BotId: !Ref ConnectTemplateBot
+  #     BotVersion: !GetAtt ConnectTemplateBotVersionWithCFN.BotVersion
+  #     SentimentAnalysisSettings:
+  #       DetectSentiment: true
+
+Outputs:
+  BotRuntimeRoleARN:
+    Description: Lex Bot Runtime IAM Role ARN
+    Value: !Ref LexBotRuntimeRoleArn
+  LexBotId:
+    Description: Lex Bot Id
+    Value: !GetAtt ConnectTemplateBot.Id
+  LexBotArn:
+    Description: Lex Bot Arn
+    Value: !GetAtt ConnectTemplateBot.Arn

@@ -1,0 +1,71 @@
+---
+# Brian Gaber
+# IAM User Creation Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name myprodstack --template-body file://ai-selfhelp-for-bitbucket-user.yaml --parameters ...
+# This CloudFormation Template will create one IAM User and one IAM Role
+# This template creates an IAM user without console access whose only purpose is to have its Access keys to be used by Bitbucket Pipelines for deployment
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-06-29 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: AI SelfHelp
+    Type: String
+  Owner:
+    Description: Owner Name
+    Default: Rama Pulivarthy
+    Type: String
+  Username:
+    Description: User Name
+    Default: ai_selfhelp_for_bitbucket
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "IAM User Information"
+        Parameters:
+          - Username
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+
+Resources:
+  IAMuser:
+    Type: AWS::IAM::User
+    Properties:
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+      UserName: !Ref Username
+
+Outputs:
+  IAMUserARN:
+    Description: New IAM User ARN
+    Value: !GetAtt IAMuser.Arn

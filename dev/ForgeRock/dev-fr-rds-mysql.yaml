@@ -1,0 +1,66 @@
+---
+# Brian Gaber
+# ForgeRock 7 RDS Aurora Serverless MySQL Upgrade Cloudformation Template
+Parameters:
+  devForgeRockVpcPrivSubnet1a:
+    Description: Development ForgeRock 161.108.205.128/26 Private Subnet1a
+    Default: subnet-dfb10885
+    Type: String
+  devForgeRockVpcPrivSubnet1b:
+    Description: Development ForgeRock 161.108.205.192/26 Private Subnet1b
+    Default: subnet-2b34264e
+    Type: String
+  devRDSmysqlPasswd:
+    Description: Development ForgeRock RDS MySQL Password
+    Default: NotShownYouNeedToChange
+    Type: String
+
+Resources:    
+  devRDSmysqlSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for dev-fr-rds-mysql database
+      SubnetIds:
+        - !ImportValue PRIVSUBNET1A
+        - !ImportValue PRIVSUBNET1B
+      Tags: 
+        - Key: Owner
+          Value: Michael Graf
+        - Key: Application
+          Value: ForgeRock
+
+  devRDSmysqlCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      DatabaseName: UserDB
+      DBClusterIdentifier: dev-fr-rds-mysql
+      DBClusterParameterGroupName: default.aurora-mysql5.7
+      DBSubnetGroupName:
+        Ref: devRDSmysqlSubnets
+      EngineMode: serverless
+      MasterUsername: admin
+      MasterUserPassword: !Ref devRDSmysqlPasswd
+      StorageEncrypted: true
+      VpcSecurityGroupIds:
+        - !ImportValue DevRDSVPCSecurityGroup
+      Tags: 
+        - Key: Owner
+          Value: Michael Graf
+        - Key: Application
+          Value: ForgeRock
+    UpdateReplacePolicy: Snapshot
+    DeletionPolicy: Snapshot
+
+Outputs:
+  DBname:
+    Description: DB Cluster Identifier
+    Value: !Ref devRDSmysqlCluster
+  dbEndpointAddress:
+    Description: DB Cluster Endpoint Address
+    Value:
+      !GetAtt devRDSmysqlCluster.Endpoint.Address
+  dbEndpointPort:
+    Description: DB Cluster Endpoint Port
+    Value:
+      !GetAtt devRDSmysqlCluster.Endpoint.Port

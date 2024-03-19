@@ -1,0 +1,125 @@
+---
+# Brian Gaber
+# BonitaSoft Cloudformation Template
+# Creates Internal NLB with Internal ALB target
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-03-07 12:15:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: BonitaSoft
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Matt Riding
+    Type: String
+  ProdCaSvcVpc:
+    Description: Canada Prod 161.108.208.0/24 and 161.108.90.0/24 CIDR VPC
+    Default: vpc-8ae1c9e3
+    Type: String
+  ProdCaSvcVpcPubSubnet1a:
+    Description: Canada Prod 161.108.208.0/26 Public Subnet ca-central-1a
+    Default: subnet-24a0984d
+    Type: String
+  ProdCaSvcVpcPubSubnet1b:
+    Description: Canada Prod 161.108.208.64/26 Public Subnet ca-central-1b
+    Default: subnet-aaf0a1d1
+    Type: String
+  ProdCaSvcVpcPrivSubnet1a:
+    Description: Canada Prod 161.108.90.0/25 Private Subnet ca-central-1a
+    Default: subnet-0697caaeaad726861
+    Type: String
+  ProdCaSvcVpcPrivSubnet1b:
+    Description: Canada Prod 161.108.208.192/26 Private Subnet ca-central-1b
+    Default: subnet-fef0a185
+    Type: String
+  bonitaAlbArn:
+    Description: Target BonitaSoft ALB ARN
+    Default: arn:aws:elasticloadbalancing:ca-central-1:172507017890:loadbalancer/app/bonita-prodca-alb/749ca34468c0c55c
+    Type: String
+
+Resources:
+  ProdCaBonitaSoftIntNetLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: prod-ca-bonitasoft-nlb-internal
+      Scheme: internal
+      Subnets:
+        - Ref: ProdCaSvcVpcPrivSubnet1a
+        - Ref: ProdCaSvcVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: network
+
+  BonitaSoftNetLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: BonitaSoftNetLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: ProdCaBonitaSoftIntNetLdBal
+      Port: 443
+      Protocol: TCP
+
+  BonitaSoftNetLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckProtocol: HTTPS
+      Name: bonita-static-ip-for-alb-tg
+      Port: 443
+      Protocol: TCP
+      Targets:
+        - Id:
+            Ref: bonitaAlbArn
+          Port: 443
+      TargetType: alb
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: ProdCaSvcVpc
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref ProdCaSvcVpc
+  PrivSubnet1A:
+    Description: Private Subnet1a
+    Value: !Ref ProdCaSvcVpcPrivSubnet1a
+  PrivSubnet1B:
+    Description: Private Subnet1b
+    Value: !Ref ProdCaSvcVpcPrivSubnet1b
+  BonitaSoftNLBname:
+    Description: Full name of the BonitaSoft Internal NLB
+    Value:
+      !GetAtt ProdCaBonitaSoftIntNetLdBal.LoadBalancerFullName
+  BonitaSoftALBDnsName:
+    Description: DNS name of the BonitaSoft Internal NLB
+    Value:
+      !GetAtt ProdCaBonitaSoftIntNetLdBal.DNSName

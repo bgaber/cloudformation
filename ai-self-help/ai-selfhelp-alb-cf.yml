@@ -1,0 +1,179 @@
+---
+# Author: Brian Gaber
+# AI SelfHelp ALB and CloudFront Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name alb-cf-stack --template-body file://cg3-s3-cf.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - CloudFront Distribution
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-08-02 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who executed this CloudFormation template
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: AI Self Help 2.0
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  AlbDns:
+    Description: ALB DNS Value
+    Default: ECS-S-MyFar-QON3EMTFFSU0-1714153956.us-east-1.elb.amazonaws.com
+    Type: String
+  R53HostedZoneId:
+    Description: The Route 53 Hosted Zone Id For careguard.net
+    Type: String
+    Default: Z18BORQC57TNAS
+  AlternateDomainNames:
+    Description: The alternate domain names (CNAME) used instead of the CloudFront URL
+    Type: CommaDelimitedList
+    Default: "newtest.connect.compucom.com"
+  CertificateARN:
+    Description: The ACM Certificate ARN for *.connect.compucom.com
+    Type: String
+    Default: arn:aws:acm:us-east-1:047453590376:certificate/a2cf4086-8c15-476e-a852-7fd5056d5466
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "CloudFront Distribution"
+        Parameters:
+          - AlbDns
+          - AlternateDomainNames
+          - CertificateARN
+      - Label:
+          default: "Route 53"
+        Parameters:
+          - R53HostedZoneId
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      AlbDns:
+        default: "What is the name of the ALB?"
+      AlternateDomainNames:
+        default: "What are the Alternate domain names (CNAME) for CloudFront?"
+      CertificateARN:
+        default: "What is the ARN of the ACM certificate for the CloudFront Distribution?"
+      R53HostedZoneId:
+        default: "What is the Id of the Route 53 Hosted Zone?"
+
+Resources:
+  WebsiteDistributionCFDistribution70408E7F:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases: !Ref AlternateDomainNames
+        CacheBehaviors:
+        # The unique identifier of the cache policy that is attached to this cache behavior.
+        # ID was found at https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-origin-request-policies.html
+          - CachePolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            PathPattern: *
+            TargetOriginId: alb-origin
+            ViewerProtocolPolicy: redirect-to-https
+        Comment: Used for AI Self Help 2.0
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          TargetOriginId: alb-origin
+          ViewerProtocolPolicy: redirect-to-https
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            DomainName: !Ref AlbDns
+            Id: alb-origin
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: TLS1.2
+        PriceClass: PriceClass_All
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateARN
+          #CloudFrontDefaultCertificate: false
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+        WebACLId: arn:aws:wafv2:us-east-1:047453590376:global/webacl/CreatedByCloudFront-147c33f5-2daf-46aa-8d61-191bb0ba0fc5/f208d62b-50eb-4678-ae48-55c7d2300d36
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  # Create Route 53 DNS Alias Records for the CloudFront Distribution URL
+  # CognitoDNSRecords:
+  #   Type: AWS::Route53::RecordSetGroup
+  #   Properties:
+  #     HostedZoneId: !Ref R53HostedZoneId
+  #     RecordSets: 
+  #       - Name: prod-vsn.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+  #       - Name: prod-compucom.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+  #       - Name: prod-att.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+  #       - Name: prod-attni.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+  #       - Name: prod-attcp.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+  #       - Name: prod-attmss.careguard.net
+  #         Type: A
+  #         AliasTarget:
+  #           DNSName: !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName
+  #           HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  CloudFrontId:
+    Description: CloudFront Identifier
+    Value: !Ref WebsiteDistributionCFDistribution70408E7F
+    Export:
+      Name: ExCG3ProdCloudFrontDistId
+  CloudFrontDomainName:
+    Description: CloudFront Domain Name
+    Value:
+      !GetAtt WebsiteDistributionCFDistribution70408E7F.DomainName

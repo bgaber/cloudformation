@@ -1,0 +1,1173 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+# Creates NLB Listeners or Target Groups.
+# Also, creates the SGs for the DS servers.
+# NLB Listeners or Target Groups in this phase because the IP addresses of the NLB are not known in phase 1.
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-03-10 10:50:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  prodForgeRockVpc:
+    Description: Prod ForgeRock Public 161.108.207.0/24 CIDR VPC
+    Default: vpc-fc294885
+    Type: String
+  prodForgeRockVpcPubSubnet1a:
+    Description: Prod ForgeRock 161.108.207.0/26 Public Subnet1a
+    Default: subnet-c70ae8a3
+    Type: String
+  prodForgeRockVpcPubSubnet1b:
+    Description: Prod ForgeRock 161.108.207.64/26 Public Subnet1b
+    Default: subnet-8867f8a4
+    Type: String
+  prodForgeRockVpcPrivSubnet1a:
+    Description: Prod ForgeRock 161.108.207.128/26 Private Subnet1a
+    Default: subnet-a1f61bc5
+    Type: String
+  prodForgeRockVpcPrivSubnet1b:
+    Description: Prod ForgeRock 161.108.207.192/26 Private Subnet1b
+    Default: subnet-c66df2ea
+    Type: String
+  prodIDM1EC2Ip:
+    Description: Prod ForgeRock IDM-1 Server IP Address
+    Default: 161.108.207.154/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodIDM2EC2Ip:
+    Description: Prod ForgeRock IDM-2 Server IP Address
+    Default: 161.108.207.230/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodAM1EC2Ip:
+    Description: Prod ForgeRock AM-1 Server IP Address
+    Default: 161.108.207.176/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodAM2EC2Ip:
+    Description: Prod ForgeRock AM-2 Server IP Address
+    Default: 161.108.207.245/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodDS1EC2Id:
+    Description: Prod ForgeRock DS-1 Server Instance Id
+    Default: i-0e547293e1b820cf2
+    Type: String
+  prodDS2EC2Id:
+    Description: Prod ForgeRock DS-2 Server Instance Id
+    Default: i-08ad8da1effc60596
+    Type: String
+  FrDplyEC2Ip:
+    Description: ForgeRock Deployment Server IP Address
+    Default: 161.108.207.143/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodBlueNLBip1:
+    Description: Prod ForgeRock Blue Internal NLB IP Address 1
+    Default: 161.108.207.158/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodBlueNLBip2:
+    Description: Prod ForgeRock Blue Internal NLB IP Address 2
+    Default: 161.108.207.232/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodBlueExtNLBip1:
+    Description: Prod ForgeRock Blue Internet Facing NLB Private IP Address 1
+    Default: 161.108.207.9/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodBlueExtNLBip2:
+    Description: Prod ForgeRock Blue Internet Facing NLB Private IP Address 2
+    Default: 161.108.207.82/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodGreenNLB1ip1:
+    Description: Prod ForgeRock Green Internal NLB 1 IP Address 1
+    Default: 161.108.207.180/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodGreenNLB1ip2:
+    Description: Prod ForgeRock Green Internal NLB 1 IP Address 2
+    Default: 161.108.207.237/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodGreenNLB2ip1:
+    Description: Prod ForgeRock Green Internal NLB 2 IP Address 1
+    Default: 161.108.207.254/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodGreenNLB2ip2:
+    Description: Prod ForgeRock Green Internal NLB 2 IP Address 2
+    Default: 161.108.207.146/32
+    Type: String
+    AllowedPattern: ^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]|32))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  prodFRSG:
+    Description: Prod ForgeRock Security Group
+    Default: sg-fe6c548a
+    Type: String
+  prodAnyConnSG:
+    Description: Prod AnyConnect Security Group
+    Default: sg-0b79870e1e884e3a0
+    Type: String
+  prodRHCapSG:
+    Description: Prod Redhat Capsule Security Group
+    Default: sg-0fe71f41aa2d99016
+    Type: String
+
+Resources:
+  prodDS1SvrSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to Prod ForgeRock DS-1 instances
+      GroupName: prod-fr-ds1-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.0/14
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 131.99.0.0/16
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: allow ssh access from Shared
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+        - CidrIp: 199.91.136.8/29
+          Description: allow Identity Store from Service Now
+          FromPort: 1636
+          IpProtocol: tcp
+          ToPort: 1636
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  DS1securitygroupfromIDM1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from IDM-1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodIDM1EC2Ip
+      ToPort: 1636
+  DS1securitygroupfromIDM2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from IDM-2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodIDM2EC2Ip
+      ToPort: 1636
+  DS1securitygroupfromNlbDsCfg1IP1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internal NLB IP 1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueNLBip1
+      ToPort: 1636
+  DS1securitygroupfromNlbDsCfg1IP2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internal NLB IP 2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueNLBip2
+      ToPort: 1636
+
+  DS1securitygroupfromExtNlbDsCfg1IP1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internet Facing NLB IP 1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueExtNLBip1
+      ToPort: 1636
+  DS1securitygroupfromExtNlbDsCfg1IP2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internet Facing NLB IP 2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueExtNLBip2
+      ToPort: 1636
+
+  DS1securitygroupfromAM1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from AM-1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 1636
+  DS1securitygroupfromAM2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from AM-2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 1636
+
+  DS1securitygroupfromAM1Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 2636
+  DS1securitygroupfromAM2Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 2636
+  DS1securitygroupfromNlbDsUsr1IP1Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 1 IP 1
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB1ip1
+      ToPort: 2636
+  DS1securitygroupfromNlbDsCfg1IP2Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 1 IP 2
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB1ip2
+      ToPort: 2636
+
+  DS1securitygroupfromAM1Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 3636
+  DS1securitygroupfromAM2Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 3636
+  DS1securitygroupfromNlbDsUsr1IP1Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 1 IP 1
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB1ip1
+      ToPort: 3636
+  DS1securitygroupfromNlbDsCfg1IP2Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 1 IP 2
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB1ip2
+      ToPort: 3636
+
+  securitygroupds1fromFRProdsecuritygroupds21444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 1444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 1444
+
+  securitygroupds1fromFRProdsecuritygroupds22444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 2444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 2444
+
+  securitygroupds1fromFRProdsecuritygroupds23444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 3444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 3444
+
+  securitygroupds1fromFRProdsecuritygroupds28C0C9B5619892F398FCF:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from DS-2
+      FromPort: 1989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 1989
+
+  securitygroupds1fromFRProdsecuritygroupds28C0C9B562989D2F8E78B:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 2989
+
+  securitygroupds1fromFRProdsecuritygroupds28C0C9B5639892BD3D081:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      ToPort: 3989
+
+  prodDS2SvrSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to Prod ForgeRock DS-2 instances
+      GroupName: prod-fr-ds2-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.16.0.0/14
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 131.99.0.0/16
+          Description: allow ssh access from CMPC internal
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: allow ssh access from Shared
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref FrDplyEC2Ip
+          Description: allow from Deployment Server
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+        - CidrIp: 199.91.136.8/29
+          Description: allow Identity Store from Service Now
+          FromPort: 1636
+          IpProtocol: tcp
+          ToPort: 1636
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  DS2securitygroupfromIDM1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from IDM-1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodIDM1EC2Ip
+      ToPort: 1636
+  DS2securitygroupfromIDM2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from IDM-2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodIDM2EC2Ip
+      ToPort: 1636
+  DS2securitygroupfromNlbDsCfg1IP1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internal NLB IP 1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueNLBip1
+      ToPort: 1636
+  DS2securitygroupfromNlbDsCfg1IP2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internal NLB IP 2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueNLBip2
+      ToPort: 1636
+
+  DS2securitygroupfromExtNlbDsCfg1IP1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internet Facing NLB IP 1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueExtNLBip1
+      ToPort: 1636
+  DS2securitygroupfromExtNlbDsCfg1IP2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from Blue Internet Facing NLB IP 2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodBlueExtNLBip2
+      ToPort: 1636
+
+  DS2securitygroupfromAM1Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from AM-1
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 1636
+  DS2securitygroupfromAM2Port1636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from AM-2
+      FromPort: 1636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 1636
+
+  DS2securitygroupfromAM1Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 2636
+  DS2securitygroupfromAM2Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 2636
+  DS2securitygroupfromNlbDsUsr1IP1Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 2 IP 1
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB2ip1
+      ToPort: 2636
+  DS2securitygroupfromNlbDsCfg1IP2Port2636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 2 IP 2
+      FromPort: 2636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB2ip2
+      ToPort: 2636
+
+  DS2securitygroupfromAM1Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM1EC2Ip
+      ToPort: 3636
+  DS2securitygroupfromAM2Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodAM2EC2Ip
+      ToPort: 3636
+  DS2securitygroupfromNlbDsUsr1IP1Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 2 IP 1
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB2ip1
+      ToPort: 3636
+  DS2securitygroupfromNlbDsCfg1IP2Port3636:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow from Green NLB 2 IP 2
+      FromPort: 3636
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      CidrIp: !Ref prodGreenNLB2ip2
+      ToPort: 3636
+
+  securitygroupds2fromFRProdsecuritygroupds11444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 1444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 1444
+
+  securitygroupds2fromFRProdsecuritygroupds12444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 2444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 2444
+
+  securitygroupds2fromFRProdsecuritygroupds13444:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Admin Port
+      FromPort: 3444
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 3444
+
+  securitygroupds2prodlpfromFRProdsecuritygroupamprodlp8C0C9B5619892F398FCF:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Identity Store from DS-1
+      FromPort: 1989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 1989
+
+  securitygroupds2prodlpfromFRProdsecuritygroupamprodlp8C0C9B562989D2F8E78B:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Configuration Store
+      FromPort: 2989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 2989
+
+  securitygroupds2prodlpfromFRProdsecuritygroupamprodlp8C0C9B5639892BD3D081:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: allow Token Store
+      FromPort: 3989
+      GroupId:
+        Fn::GetAtt:
+          - prodDS2SvrSecurityGroup
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - prodDS1SvrSecurityGroup
+          - GroupId
+      ToPort: 3989
+
+  ProdBlueNetLdBalListener1636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdBlueNetLdBalTgtGrp1636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdBlueNlbArn
+      Port: 1636
+      Protocol: TCP
+  ProdBlueNetLdBalTgtGrp1636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-tg-fr-blue-nlb-1636
+      Port: 1636
+      Protocol: TCP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 1636
+        - Id: !Ref prodDS2EC2Id
+          Port: 1636
+      TargetType: instance
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  ProdBlueExtNetLdBalListener1636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdBlueExtNetLdBalTgtGrp1636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdBlueExtNlbArn
+      Port: 1636
+      Protocol: TCP
+  ProdBlueExtNetLdBalTgtGrp1636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-tg-fr-blue-ext-nlb-1636
+      Port: 1636
+      Protocol: TCP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 1636
+        - Id: !Ref prodDS2EC2Id
+          Port: 1636
+      TargetType: instance
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  ProdGreenNetLdBal1Listener2636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdGreenNetLdBal1TgtGrp2636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdGreenNlb1Arn
+      Port: 2636
+      Protocol: TCP
+  ProdGreenNetLdBal1TgtGrp2636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-fr-green-nlb1-2636
+      Port: 2636
+      Protocol: TCP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 2636
+        - Id: !Ref prodDS2EC2Id
+          Port: 2636
+      TargetType: instance
+      VpcId:
+        Ref: prodForgeRockVpc
+  ProdGreenNetLdBal1Listener3636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdGreenNetLdBal1TgtGrp3636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdGreenNlb1Arn
+      Port: 3636
+      Protocol: TCP
+  ProdGreenNetLdBal1TgtGrp3636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-fr-green-nlb1-3636
+      Port: 3636
+      Protocol: TCP
+      TargetType: instance
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 3636
+        - Id: !Ref prodDS2EC2Id
+          Port: 3636
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  ProdGreenNetLdBal2Listener2636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdGreenNetLdBal2TgtGrp2636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdGreenNlb2Arn
+      Port: 2636
+      Protocol: TCP
+  ProdGreenNetLdBal2TgtGrp2636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-fr-green-nlb2-2636
+      Port: 2636
+      Protocol: TCP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 2636
+        - Id: !Ref prodDS2EC2Id
+          Port: 2636
+      TargetType: instance
+      VpcId:
+        Ref: prodForgeRockVpc
+  ProdGreenNetLdBal2Listener3636:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdGreenNetLdBal2TgtGrp3636
+          Type: forward
+      LoadBalancerArn:
+        !ImportValue ProdGreenNlb2Arn
+      Port: 3636
+      Protocol: TCP
+  ProdGreenNetLdBal2TgtGrp3636:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: prod-fr-green-nlb2-3636
+      Port: 3636
+      Protocol: TCP
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      TargetGroupAttributes:
+        - Key: preserve_client_ip.enabled
+          Value: false 
+        - Key: stickiness.enabled
+          Value: true
+      Targets:
+        - Id: !Ref prodDS1EC2Id
+          Port: 3636
+        - Id: !Ref prodDS2EC2Id
+          Port: 3636
+      TargetType: instance
+      VpcId:
+        Ref: prodForgeRockVpc
+
+Outputs:
+  VPCID:
+    Description: Prod ForgeRock VPC Identifier
+    Value: !Ref prodForgeRockVpc
+  DS1SvrSecurityGroup:
+    Description: Prod ForgeRock DS-1 Server Security Group
+    Value: !Ref prodDS1SvrSecurityGroup
+    Export:
+      Name: ProdForgeRockDS1SvrVPCSecurityGroup
+  DS2SvrSecurityGroup:
+    Description: Prod ForgeRock DS-2 Server Security Group
+    Value: !Ref prodDS2SvrSecurityGroup
+    Export:
+      Name: ProdForgeRockDS2SvrVPCSecurityGroup
+  StacksRegion:
+    Value: !Ref "AWS::Region"

@@ -1,0 +1,382 @@
+---
+# Author: Brian Gaber
+# Amazon Connect Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region ca-central-1 cloudformation create-stack --stack-name amazon-connect-stack --template-body file://amazon-connect.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Lambda Function IAM Policy
+# - Lambda Function IAM Role
+# - Amazon Connect Lambda Function
+# - Amazon Connect Instance
+# - Amazon Connect Data Storage
+# - Amazon Connect Customer Profile
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-11-06 07:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: Brian Gaber Using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Connect
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  Incident:
+    Description: Service Now Incident Number
+    Default: INC47269652
+    Type: String
+  InstanceAliasName:
+    Description: Amazon Connect Instance Alias Name
+    Default: compucomdr
+    Type: String
+  ConnectS3BucketName:
+    Description: Amazon Connect S3 Bucket Name
+    Default: amazon-connect-d1ca945d0bd6
+    Type: String
+  LambdaS3BucketName:
+    Description: Lambda S3 Bucket Name
+    Default: service-desk-dr
+    Type: String
+  LambdaCodeArchive:
+    Description: Lambda Code Archive
+    Default: ConnectKVS2Audio-cbde4c05-fd1a-4eeb-b9b8-3acba2f56bb1.zip
+    Type: String
+  LambdaIamPolicy:
+    Description: Lambda IAM Execution Policy Name
+    Default: AWSLambdaBasicExecutionRoleForAmazonConnect
+    Type: String
+  LambdaFuncName:
+    Description: Lambda Function Name
+    Default: ConnectKVS2Audio
+    Type: String
+  ConnectAMKarn:
+    Description: Connect Amazon Managed Key ARN
+    Default: arn:aws:kms:ca-central-1:122639376858:key/ee22ac3f-3a38-4d47-b563-bb5d9b0d8f31
+    Type: String
+  ConnectAMKid:
+    Description: Connect Amazon Managed Key Id
+    Default: ee22ac3f-3a38-4d47-b563-bb5d9b0d8f31
+    Type: String
+  KinesisVideoAMKarn:
+    Description: Kinesis Video Amazon Managed Key ARN
+    Default: arn:aws:kms:ca-central-1:122639376858:key/b583aa0f-ed2c-49a6-8f74-086fa34b2b04
+    Type: String
+  KinesisVideoAMKid:
+    Description: Kinesis Video Amazon Managed Key Id
+    Default: b583aa0f-ed2c-49a6-8f74-086fa34b2b04
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Amazon Connect"
+        Parameters:
+          - InstanceAliasName
+          - ConnectS3BucketName
+      - Label:
+          default: "Lambda"
+        Parameters:
+          - LambdaS3BucketName
+          - LambdaCodeArchive
+          - LambdaIamPolicy
+          - LambdaFuncName
+      - Label:
+          default: "KMS"
+        Parameters:
+          - ConnectAMKarn
+          - ConnectAMKid
+          - KinesisVideoAMKarn
+          - KinesisVideoAMKid
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+          - Incident
+    ParameterLabels:
+      InstanceAliasName:
+        default: "What is the Amazon Connect Instance Alias Name?"
+      ConnectS3BucketName:
+        default: "What is the Amazon Connect S3 Bucket Name?"
+
+Resources:
+  AmazonConnectLambdaIAMpolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: AWS Lambda Basic Execution Policy
+      ManagedPolicyName: !Ref LambdaIamPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+            Resource:
+              - !Join [":", ["arn:aws:logs:ca-central-1", !Ref AWS::AccountId, "*"] ]
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: !Join [":", ["arn:aws:logs:ca-central-1", !Ref AWS::AccountId, "log-group:/aws/lambda/", !Ref LambdaFuncName, "*"] ]
+
+  AmazonConnectLambdaIAMrole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonConnect_FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonKinesisVideoStreamsFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+        - !Ref AmazonConnectLambdaIAMpolicy
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+
+  AmazonConnectLambdaFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Amazon Connect Lambda Function
+      FunctionName: !Ref LambdaFuncName
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt AmazonConnectLambdaIAMrole.Arn
+      Code:
+        S3Bucket: !Ref LambdaS3BucketName
+        S3Key: !Ref LambdaCodeArchive
+      Runtime: python3.9
+      Timeout: 120
+      TracingConfig:
+        Mode: Active
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+
+  ConnectLambdaResourcePolicyPermission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:invokeFunction
+      FunctionName: !Ref AmazonConnectLambdaFunc
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Ref AmazonConnectInstance
+
+  EventsLambdaResourcePolicyPermission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:invokeFunction
+      FunctionName: !Ref AmazonConnectLambdaFunc
+      Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Join [":", ["arn:aws:events:ca-central-1", !Ref AWS::AccountId, "rule/VoiceMail"] ]
+
+  S3LambdaResourcePolicyPermission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:invokeFunction
+      FunctionName: !Ref AmazonConnectLambdaFunc
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: arn:aws:s3:::amazon-connect-d6fcd5f8-733f-4656-92ca-b351577f5b8d
+
+  AmazonConnectInstance:
+    Type: AWS::Connect::Instance
+    Properties: 
+      Attributes: 
+        ContactflowLogs: true
+        ContactLens: true
+        InboundCalls: true
+        OutboundCalls: true
+      IdentityManagementType: CONNECT_MANAGED
+      InstanceAlias: !Ref InstanceAliasName
+
+  AmazonConnectLambdaIntegration:
+    Type: AWS::Connect::IntegrationAssociation
+    Properties: 
+      InstanceId: !Ref AmazonConnectInstance
+      IntegrationArn: !GetAtt AmazonConnectLambdaFunc.Arn
+      IntegrationType: LAMBDA_FUNCTION
+
+  # Data Storage - Chat transcripts
+  AmazonConnectStorageChat:
+    Type: AWS::Connect::InstanceStorageConfig
+    Properties: 
+      InstanceArn: !Ref AmazonConnectInstance
+      ResourceType: CHAT_TRANSCRIPTS
+      S3Config: 
+        BucketName: !Ref ConnectS3BucketName
+        BucketPrefix: !Join ["/", ["connect", !Ref InstanceAliasName, "ChatTranscripts"] ]
+        EncryptionConfig: 
+          EncryptionType: KMS
+          KeyId: !Ref ConnectAMKarn
+      StorageType: S3
+
+  # Data Storage - Call recordings
+  AmazonConnectStorageCall:
+    Type: AWS::Connect::InstanceStorageConfig
+    Properties: 
+      InstanceArn: !Ref AmazonConnectInstance
+      ResourceType: CALL_RECORDINGS
+      S3Config: 
+        BucketName: !Ref ConnectS3BucketName
+        BucketPrefix: !Join ["/", ["connect", !Ref InstanceAliasName, "CallRecordings"] ]
+        EncryptionConfig: 
+          EncryptionType: KMS
+          KeyId: !Ref ConnectAMKarn
+      StorageType: S3
+
+  # Data Storage - Exported reports
+  AmazonConnectStorageReports:
+    Type: AWS::Connect::InstanceStorageConfig
+    Properties: 
+      InstanceArn: !Ref AmazonConnectInstance
+      ResourceType: SCHEDULED_REPORTS
+      S3Config: 
+        BucketName: !Ref ConnectS3BucketName
+        BucketPrefix: !Join ["/", ["connect", !Ref InstanceAliasName, "Reports"] ]
+        EncryptionConfig: 
+          EncryptionType: KMS
+          KeyId: !Ref ConnectAMKarn
+      StorageType: S3
+
+  # Data Storage - Live media streaming
+  AmazonConnectStorageKinesisVideo:
+    Type: AWS::Connect::InstanceStorageConfig
+    Properties: 
+      InstanceArn: !Ref AmazonConnectInstance
+      ResourceType: MEDIA_STREAMS
+      KinesisVideoStreamConfig: 
+        EncryptionConfig: 
+          EncryptionType: KMS
+          KeyId: !Ref KinesisVideoAMKarn
+        Prefix: ivr-recording
+        RetentionPeriodHours: 48
+      StorageType: KINESIS_VIDEO_STREAM
+
+  CustomerProfileDomain:   
+    Type: "AWS::CustomerProfiles::Domain" 
+    Properties:
+      DomainName: !Ref InstanceAliasName
+      #DefaultEncryptionKey: !Ref ConnectAMKarn
+      DefaultExpirationDays: 7
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+      
+  CustomerProfileIntegration:      
+    Type: "AWS::CustomerProfiles::Integration"
+    DependsOn: AmazonConnectInstance
+    Properties: 
+        DomainName: !Ref CustomerProfileDomain
+        ObjectTypeName: "CTR" 
+        Uri: !GetAtt AmazonConnectInstance.Arn
+        Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+
+  CustomerProfileObjectType:
+    Type: "AWS::CustomerProfiles::ObjectType"
+    DependsOn: CustomerProfileDomain
+    Properties: 
+      DomainName: !Ref CustomerProfileDomain
+      ObjectTypeName: "CTR"
+      Description: "Creates inferred profiles and auto-associates profiles"
+      TemplateId: "CTR-NoInferred"
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+
+Outputs:
+  AmazonConnectManagedPolicyARN:
+    Description: Amazon Connect IAM Managed Policy ARN
+    Value: !Ref AmazonConnectLambdaIAMpolicy
+  AmazonConnectIAMRoleARN:
+    Description: Amazon Connect IAM Role ARN
+    Value: !GetAtt AmazonConnectLambdaIAMrole.Arn
+  AmazonConnectLambdaId:
+    Description: Amazon Connect Lambda Id
+    Value: !Ref AmazonConnectLambdaFunc
+  AmazonConnectLambdaArn:
+    Description: Amazon Connect Lambda Arn
+    Value: !GetAtt AmazonConnectLambdaFunc.Arn
+  AmazonConnectInstanceId:
+    Description: Amazon Connect Instance Id
+    Value: !Ref AmazonConnectInstance
+  AmazonConnectLambdaArn:
+    Description: Amazon Connect Instance Arn
+    Value: !GetAtt AmazonConnectInstance.Arn
+  AmazonConnectStorageChatId:
+    Description: Amazon Connect Storage Chat Id
+    Value: !GetAtt AmazonConnectStorageChat.AssociationId
+  AmazonConnectStorageReportsId:
+    Description: Amazon Connect Storage Reports Id
+    Value: !GetAtt AmazonConnectStorageReports.AssociationId
+  AmazonConnectStorageKinesisVideoId:
+    Description: Amazon Connect Storage Kinesis Video Id
+    Value: !GetAtt AmazonConnectStorageKinesisVideo.AssociationId
+  AmazonConnectCustomerProfileDomain:
+    Description: Amazon Connect Customer Profile Domain
+    Value: !Ref CustomerProfileDomain

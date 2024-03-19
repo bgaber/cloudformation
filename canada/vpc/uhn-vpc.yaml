@@ -1,0 +1,986 @@
+---
+# Author: Brian Gaber
+# UHN VPC Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region ca-central-1 cloudformation create-stack --stack-name myteststack --template-body file://uhn-vpc-with-vgw.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This template will only use the first two AZs of a region
+# This CloudFormation Template will create:
+# - VPC
+# - Public and Private Subnets in two AZs so four subnets
+# - Internet Gateway (IGW)
+# - VPN Gateway (VGW)
+# - NAT Gateway (if required)
+# - Route Tables (Public and Private)
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-04-03 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Customer:
+    Description: Customer Name
+    Default: UHN
+    Type: String
+  VPCName:
+    Description: VPC Name
+    Default: Canada Cloud Transformation UHN VPC
+    Type: String
+  CidrIp:
+    Description: The VPC CIDR Block
+    Type: String
+    Default: 192.168.131.0/24
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicSubnet1:
+    Description: First Public Subnet Description
+    Default: Canada Cloud Transformation UHN Public1
+    Type: String
+  PubSubIp1:
+    Description: Public Subnet 1
+    Type: String
+    Default: 192.168.131.128/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicSubnet2:
+    Description: Second Public Subnet Description
+    Default: Canada Cloud Transformation UHN Public2
+    Type: String
+  PubSubIp2:
+    Description: Public Subnet 2
+    Type: String
+    Default: 192.168.131.192/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PrivateSubnet1:
+    Description: First Private Subnet Description
+    Default: Canada Cloud Transformation UHN Private1
+    Type: String
+  PrivSubIp1:
+    Description: Private Subnet 1
+    Type: String
+    Default: 192.168.131.0/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PrivateSubnet2:
+    Description: Second Private Subnet Description
+    Default: Canada Cloud Transformation UHN Private2
+    Type: String
+  PrivSubIp2:
+    Description: Private Subnet 2
+    Type: String
+    Default: 192.168.131.64/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicRouteDescription:
+    Description: Public Route Table Description
+    Default: Canada Cloud Transformation UHN Public RT
+    Type: String
+  PrivateRouteDescription:
+    Description: Private Route Table Description
+    Default: Canada Cloud Transformation UHN Private RT
+    Type: String
+  VGWASN:
+    Description: VGW Amazon Side ASN (e.g. 64514)
+    Type: Number
+    MinValue: 1000
+    MaxValue: 1000000
+  IGWrequired: 
+    Description: Internet Gateway Choice
+    Default: No
+    Type: String
+    AllowedValues: 
+      - Yes
+      - No
+    ConstraintDescription: Must provide an answer.
+  VGWrequired: 
+    Description: VPN Gateway Choice
+    Default: Yes
+    Type: String
+    AllowedValues: 
+      - Yes
+      - No
+    ConstraintDescription: Must provide an answer.
+  NATGWrequired: 
+    Description: NAT Gateway Choice
+    Default: No
+    Type: String
+    AllowedValues: 
+      - Yes
+      - No
+    ConstraintDescription: Must provide an answer.
+  FlowLogIamRoleArn:
+    Description: Flow Log IAM Role ARN
+    Default: arn:aws:iam::172507017890:role/flowlogsRole
+    Type: String
+  FlowLogCWLogArn:
+    Description: Flow Log CloudWatch Log Group ARN
+    Default: arn:aws:logs:ca-central-1:172507017890:log-group:UhnVpcFlowLog
+    Type: String
+
+Conditions: 
+  CreateIGW: !Equals [ !Ref IGWrequired, Yes ]
+  CreateVGW: !Equals [ !Ref VGWrequired, Yes ]
+  CreateNATGW: !Equals [ !Ref NATGWrequired, Yes ]
+
+Resources:
+  CustomVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref CidrIp
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: 
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref VPCName
+
+  # Create a VPC Peer to US-Shared for AWX
+  # AWXVPCPeer:
+  #   Type: AWS::EC2::VPCPeeringConnection
+  #   DependsOn: CustomVPC
+  #   Properties: 
+  #     #PeerOwnerId: 472510080448 # Shared
+  #     PeerOwnerId: 655690556973 # Sandbox
+  #     PeerRegion: us-east-1
+  #     PeerRoleArn: arn:aws:iam::655690556973:role/AWSSandboxPowerUser # Deployed from Shared CloudFormation and automatic acceptance from Sandbox
+  #     #PeerVpcId: vpc-25fb4742 # Shared
+  #     PeerVpcId: vpc-f069ee94 # Sandbox
+  #     Tags:
+  #     - Key: Customer
+  #       Value: !Ref Customer
+  #     - Key: Created
+  #       Value: !Ref CreationDate
+  #     - Key: Creator
+  #       Value: !Ref CreatedBy
+  #     - Key: Name
+  #       Value: !Join [ " ", [ !Ref Customer, "to US-Shared for AWX" ] ]
+  #     VpcId: !Ref CustomVPC
+  
+  # Create four subnets
+  PubSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PubSubIp1
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PublicSubnet1
+  PubSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PubSubIp2
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PublicSubnet2
+  PrivSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PrivSubIp1
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PrivateSubnet1
+  PrivSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PrivSubIp2
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PrivateSubnet2
+        
+  # Internet Gateway
+  CustomIGW:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreateIGW
+    Properties:
+      Tags:
+        - Key: Customer
+          Value: !Ref Customer
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Name
+          Value: !Join [ " ", [ !Ref Customer, "Internet Gateway" ] ]
+    
+  # Attach IGW to VPC
+  AttachIGWToVPC:
+    Condition: CreateIGW
+    DependsOn:
+    - CustomVPC
+    - CustomIGW
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      InternetGatewayId:
+        Ref: CustomIGW
+
+  # VPN Gateway
+  VirtPrivGW:
+    Type: AWS::EC2::VPNGateway
+    Condition: CreateVGW
+    Properties: 
+      AmazonSideAsn: !Ref VGWASN
+      Type: ipsec.1
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Join [ " ", [ !Ref Customer, "Virtual Private Gateway" ] ]
+
+  # Attach VGW to VPC
+  AttachVPNGatewayToVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateVGW
+    Properties: 
+      VpcId: !Ref CustomVPC
+      VpnGatewayId: !Ref VirtPrivGW
+
+  # Enable the VGW to propagate routes to the specified route table of the VPC
+  VGWRoutePropagation:
+    Type: AWS::EC2::VPNGatewayRoutePropagation
+    Condition: CreateVGW
+    Properties:
+       RouteTableIds: 
+        - !Ref PrivRouteTable
+       VpnGatewayId: !Ref VirtPrivGW
+
+  # NAT Gateway
+  NATgateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNATGW
+    Properties: 
+      AllocationId: !GetAtt [ EIPforNATGW, AllocationId ]
+      SubnetId: !Ref PubSubnet2
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Join [ " ", [ !Ref Customer, "NAT Gateway" ] ]
+  
+  # Elastic IP for NAT Gateway
+  EIPforNATGW:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachIGWToVPC
+    Condition: CreateNATGW
+    Properties:
+      Domain: vpc
+        
+  # Create two Route Tables (Public and Private)
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PublicRouteDescription
+
+  PubSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet1
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet2
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateIGW
+    Properties:
+       RouteTableId:
+         Ref: PubRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: CustomIGW
+        
+  PrivRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+      - Key: Name
+        Value: !Ref PrivateRouteDescription
+        
+  PrivSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet1
+      RouteTableId:
+        Ref: PrivRouteTable
+        
+  PrivSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet2
+      RouteTableId:
+        Ref: PrivRouteTable
+  
+  # Private Route for NAT Gateway
+  NATGWPrivRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CustomIGW
+    Condition: CreateNATGW
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref PrivRouteTable
+      NatGatewayId: !Ref NATgateway
+
+  # Private Route for AWX
+  # AWXPrivRoute:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     DestinationCidrBlock: 10.251.0.0/21
+  #     RouteTableId: !Ref PrivRouteTable
+  #     VpcPeeringConnectionId: !Ref AWXVPCPeer
+
+  # Private Routes for Virtual Private Network Gateway (VGW) do not need to be specified because they are propogated
+  # Route propagation allows a virtual private gateway to automatically propagate routes to the route tables.
+  # This means that you don't need to manually enter VPN routes to your route tables.
+  # https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html#RouteTables
+
+  # Create a Network ACL in the VPC
+  NetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Customer
+        Value: !Ref Customer
+      - Key: Created
+        Value: !Ref CreationDate
+      - Key: Creator
+        Value: !Ref CreatedBy
+        
+  # Create a Network ACL Rules
+  InboundRule96:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: 96
+      Protocol: -1
+      RuleAction: deny
+      CidrBlock: 68.253.115.107/32
+  InboundRule97:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: 97
+      Protocol: -1
+      RuleAction: deny
+      CidrBlock: 138.68.34.161/32
+  InboundRule98:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: 98
+      Protocol: -1
+      RuleAction: deny
+      CidrBlock: 45.77.64.111/32
+  InboundRule99:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: 99
+      Protocol: -1
+      RuleAction: deny
+      CidrBlock: 104.193.252.197/32
+  InboundRule100:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      CidrBlock: 0.0.0.0/0
+  OutboundRule96:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: NetworkAcl
+      RuleNumber: 96
+      Protocol: -1
+      Egress: true
+      RuleAction: deny
+      CidrBlock: 68.253.115.107/32
+  OutboundRule97:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: NetworkAcl
+      RuleNumber: 97
+      Protocol: -1
+      Egress: true
+      RuleAction: deny
+      CidrBlock: 138.68.34.161/32
+  OutboundRule98:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: NetworkAcl
+      RuleNumber: 98
+      Protocol: -1
+      Egress: true
+      RuleAction: deny
+      CidrBlock: 45.77.64.111/32
+  OutboundRule99:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: NetworkAcl
+      RuleNumber: 99
+      Protocol: -1
+      Egress: true
+      RuleAction: deny
+      CidrBlock: 104.193.252.197/32
+  OutboundRule100:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: NetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      Egress: true
+      RuleAction: allow
+      CidrBlock: 0.0.0.0/0
+
+  # Create Standard Security Group
+  StandardSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Join [ " ", [ !Ref Customer, "CUSTOMER VPC - US COMPUCOM" ] ]
+      GroupName: std-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.251.2.0/23
+          Description: SSH from AWX EKS cluster in shared account private subnet
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.2.0/23
+          Description: WinRM-HTTP from AWX EKS cluster in shared account private subnet
+          FromPort: 5985
+          IpProtocol: tcp
+          ToPort: 5985
+        - CidrIp: 10.251.2.0/23
+          Description: WinRM-HTTPS from AWX EKS cluster in shared account private subnet
+          FromPort: 5986
+          IpProtocol: tcp
+          ToPort: 5986
+        - CidrIp: 10.251.4.0/23
+          Description: SSH from AWX EKS cluster in shared account private subnet
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.251.4.0/23
+          Description: WinRM-HTTP from AWX EKS cluster in shared account private subnet
+          FromPort: 5985
+          IpProtocol: tcp
+          ToPort: 5985
+        - CidrIp: 10.251.4.0/23
+          Description: WinRM-HTTPS from AWX EKS cluster in shared account private subnet
+          FromPort: 5986
+          IpProtocol: tcp
+          ToPort: 5986
+        - CidrIp: 192.168.88.0/21
+          Description: allow ssh access from CMPC VPN
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 445
+          IpProtocol: tcp
+          ToPort: 445
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8082
+          IpProtocol: tcp
+          ToPort: 8082
+        - CidrIp: 10.17.2.249/32
+          Description: allow McAfee EPO access from spw099epo02-new
+          FromPort: 8085
+          IpProtocol: tcp
+          ToPort: 8085
+        - CidrIp: 10.16.4.139/32
+          Description: Delinea INC47131990
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+        - CidrIp: 10.16.4.140/32
+          Description: Delinea INC47131990
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+      Tags: 
+        - Key: Customer
+          Value: !Ref Customer
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Name
+          Value: !Join [ " ", [ !Ref Customer, "CUSTOMER VPC - US COMPUCOM" ] ]
+      VpcId:
+        Ref: CustomVPC
+
+  # Create Cisco AnyConnect Security Group
+  AnyConnectSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Join [ " ", ["AnyConnect BASIC Connectivity -", !Ref Customer ] ]
+      GroupName: anyconnect-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 161.108.181.0/24
+          Description: AnyConnect RDP (on prem 10.144.192.x nated to 192.168.131.x)
+          FromPort: 3389
+          IpProtocol: tcp
+          ToPort: 3389
+        - CidrIp: 161.108.181.0/24
+          Description: AnyConnect SSH (on prem 10.144.192.x nated to 192.168.131.x)
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 161.108.181.0/24
+          Description: AnyConnect HTTPS (on prem 10.144.192.x nated to 192.168.131.x)
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 161.108.181.0/24
+          Description: AnyConnect HTTP (on prem 10.144.192.x nated to 192.168.131.x)
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+        - CidrIp: 161.108.181.0/24
+          Description: Ping (on prem 10.144.192.x nated to 192.168.131.x)
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+      Tags: 
+        - Key: Customer
+          Value: !Ref Customer
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Name
+          Value: !Join [ " ", ["AnyConnect BASIC Connectivity -", !Ref Customer ] ]
+      VpcId:
+        Ref: CustomVPC
+
+  # Create Redhat Capsule Security Group
+  RHCapsuleSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Join [ " ", ["RedHat Capsule Communication -", !Ref Customer ] ]
+      GroupName: rh-capsule-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: NTP
+          FromPort: 123
+          IpProtocol: udp
+          ToPort: 123
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule SSH
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule HTTPS
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule HTTP
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule HTTP
+          FromPort: 8000
+          IpProtocol: tcp
+          ToPort: 8000
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule
+          FromPort: 5647
+          IpProtocol: tcp
+          ToPort: 5647
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule
+          FromPort: 8443
+          IpProtocol: tcp
+          ToPort: 8443
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule
+          FromPort: 9090
+          IpProtocol: tcp
+          ToPort: 9090
+        - CidrIp: 161.108.208.182/32
+          Description: Capsule
+          FromPort: 8140
+          IpProtocol: tcp
+          ToPort: 8140
+      Tags: 
+        - Key: Customer
+          Value: !Ref Customer
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Name
+          Value: !Join [ " ", ["RedHat Capsule Communication -", !Ref Customer ] ]
+      VpcId:
+        Ref: CustomVPC
+
+  SmartsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SMARTS
+      GroupName: !Join [ " ", ["SMARTS -", !Ref Customer ] ]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: tcp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: udp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.173/32
+          Description: SMARTS Ping Requirement
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: tcp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS SNMP Requirement
+          IpProtocol: udp
+          FromPort: 161
+          ToPort: 162
+        - CidrIp: 192.94.141.188/32
+          Description: SMARTS Ping Requirement
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: !Join [ " ", ["SMARTS -", !Ref Customer ] ]
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      VpcId:
+        Ref: CustomVPC
+
+  QualysSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qualys Scanner Appliance
+      GroupName: !Join [ " ", ["Qualys Scanner Appliance -", !Ref Customer ] ]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 161.108.208.215/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.251.3.174/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.0.224/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.27/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+        - CidrIp: 10.17.1.30/32
+          Description: Qualys Scanner Appliance IP
+          IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+      Tags:
+        - Key: Name
+          Value: !Join [ " ", ["Qualys Scanner Appliance -", !Ref Customer ] ]
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      VpcId:
+        Ref: CustomVPC
+
+  # Create Flow Log for VPC
+  FlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties: 
+      DeliverLogsPermissionArn: !Ref FlowLogIamRoleArn
+      LogDestination: !Ref FlowLogCWLogArn
+      #LogGroupName: !Join ["", [!Ref Customer, "-VPC-FlowLog"] ]
+      ResourceId: !Ref CustomVPC
+      ResourceType: VPC
+      Tags: 
+        - Key: Customer
+          Value: !Ref Customer
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+      TrafficType: ALL
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCName
+          - CidrIp
+          - PublicSubnet1
+          - PubSubIp1
+          - PublicSubnet2
+          - PubSubIp2
+          - PrivateSubnet1
+          - PrivSubIp1
+          - PrivateSubnet2
+          - PrivSubIp2
+          - PublicRouteDescription
+          - PrivateRouteDescription
+          - VGWASN
+          - IGWrequired
+          - VGWrequired
+          - NATGWrequired
+      - Label:
+          default: "Flow Log Parameters"
+        Parameters:
+          - FlowLogIamRoleArn
+          - FlowLogCWLogArn
+    ParameterLabels:
+      VPCName:
+        default: "What is the name of new VPC?"
+      CidrIp:
+        default: "What is the IP CIDR of new VPC?"
+      PublicSubnet1:
+        default: "What is the name of this public subnet?"
+      PubSubIp1:
+        default: "What is the IP CIDR of this public subnet?"
+      PublicSubnet2:
+        default: "What is the name of this public subnet?"
+      PubSubIp2:
+        default: "What is the IP CIDR of this public subnet?"
+      PrivateSubnet1:
+        default: "What is the name of this private subnet?"
+      PrivSubIp1:
+        default: "What is the IP CIDR of this private subnet?"
+      PrivateSubnet2:
+        default: "What is the name of this private subnet?"
+      PrivSubIp2:
+        default: "What is the IP CIDR of this private subnet?"
+      PublicRouteDescription:
+        default: "What is the name of the public route table?"
+      PrivateRouteDescription:
+        default: "What is the name of the private route table?"
+      VGWASN:
+        default: "What is the VGW ASN value (required for Direct Connect, e.g. 64514)?"
+      IGWrequired:
+        default: "Is an Intenet Gateway required (will incur costs even if not used)?"
+      VGWrequired:
+        default: "Is a VPN Gateway required (will incur costs even if not used)?"
+      NATGWrequired:
+        default: "Is a NAT Gateway required (will incur costs even if not used)?"
+        
+Outputs:
+  VPCID:
+    Description: VPC Information
+    Value: !Ref CustomVPC
+  IGWID:
+    Description: IGW Information
+    Value: !Ref CustomIGW
+    Condition: CreateIGW
+  VGWID:
+    Description: VGW Information
+    Value: !Ref VirtPrivGW
+    Condition: CreateVGW
+  NATGW:
+    Description: NAT Information
+    Value: !Ref NATgateway
+    Condition: CreateNATGW
+  ElasticIP:
+    Description: Elastic IP Address
+    Value: !Ref EIPforNATGW
+    Condition: CreateNATGW
+  EIPallocID:
+    Description: Elastic IP Allocation ID
+    Value: !GetAtt EIPforNATGW.AllocationId
+    Condition: CreateNATGW
+  NetworkACL:
+    Description: Network ACL
+    Value: !Ref NetworkAcl
+  MyStacksRegion:
+    Description: This Stack's Region
+    Value: !Ref "AWS::Region"

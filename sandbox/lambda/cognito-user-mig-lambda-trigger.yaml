@@ -1,0 +1,168 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 Cognito Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-cognito-stack --template-body file://cg3-cognito-test.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - IAM Policy
+# - IAM Role
+# - Lambda Function
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-02-07 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  RdsVpcId:
+    Description: RDS VPC
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-15df6372
+  RdsPrivSubnets:
+    Description: RDS Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-bc5d0496, subnet-16d58e4e"
+  RdsSecurityGroup:
+    Description: RDS Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0e28d59efad38c059
+  AWSaccount:
+    Description: The AWS Account for this deployment
+    Type: String
+    Default: 300899438431
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network"
+        Parameters:
+          - RdsVpcId
+          - RdsPrivSubnets
+          - RdsSecurityGroup
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      RdsVpcId:
+        default: "What is the Id of the VPC where the RDS MySQL database is that will be used by the Lambda triggers?"
+      RdsPrivSubnets:
+        default: "What are the Subnets where the RDS MySQL database is that will be used by the Lambda triggers?"
+      RdsSecurityGroup:
+        default: "What is the Security Group for the RDS MySQL database that will be used by the Lambda triggers?"
+      AWSaccount:
+        default: "What is the AWS Account for this deployment"
+
+Resources:
+  UserMigIAMpolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: CareGuard User Migration Test
+      ManagedPolicyName: careguard_user_migration_test
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:DeleteNetworkInterface'
+              - 'logs:CreateLogGroup'
+            Resource:
+              - !Join ["", ["arn:aws:logs:us-east-1:", !Ref AWSaccount, ":*"] ]
+              - !Join ["", ["arn:aws:ec2:us-east-1:", !Ref AWSaccount, ":*"] ]
+          - Effect: Allow
+            Action: 'ec2:DescribeNetworkInterfaces'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: !Join ["", ["arn:aws:logs:us-east-1:", !Ref AWSaccount, ":log-group:/aws/lambda/careguard-user-migration-test:*"] ]
+
+  UserMigIAMrole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns: 
+        - !Ref UserMigIAMpolicy
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+
+  UserMigLambdaTrigger:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: CareGuard 3 Cognito User Pool User Migration Function
+      FunctionName: careguard-user-migration-test1
+      Handler: index.handler
+      Role: !GetAtt UserMigIAMrole.Arn
+      Code:
+        S3Bucket: careguard-cognito-bucket
+        S3Key: cg3-user-migration-9ae5cc22-b6af-4b64-b54b-289c10cfe894.zip
+      Runtime: nodejs18.x
+      Timeout: 3
+      TracingConfig:
+        Mode: Active
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref RdsSecurityGroup
+        SubnetIds: !Ref RdsPrivSubnets
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+
+Outputs:
+  UserMigManagedPolicyARN:
+    Description: User Migration IAM Managed Policy ARN
+    Value: !Ref UserMigIAMpolicy
+  UserMigIAMRoleARN:
+    Description: User Migration IAM Role ARN
+    Value: !GetAtt UserMigIAMrole.Arn
+  UserMigLambda:
+    Description: User Migration Lambda Id
+    Value: !Ref UserMigLambdaTrigger
+  UserMigLambdaArn:
+    Description: User Migration Lambda Arn
+    Value: !GetAtt UserMigLambdaTrigger.Arn
+    Export:
+      Name: UserMigLambdaArn

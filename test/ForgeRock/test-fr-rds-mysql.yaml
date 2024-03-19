@@ -1,0 +1,88 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-02-18 10:50:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  testForgeRockVpcPrivSubnet1a:
+    Description: Test ForgeRock 161.108.205.128/26 Private Subnet1a
+    Default: subnet-dfb10885
+    Type: String
+  testForgeRockVpcPrivSubnet1b:
+    Description: Test ForgeRock 161.108.205.192/26 Private Subnet1b
+    Default: subnet-2b34264e
+    Type: String
+
+Resources:    
+  testRDSmysqlSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for test-fr-rds-mysql database
+      SubnetIds:
+        - !ImportValue TestPrivSubnet1A
+        - !ImportValue TestPrivSubnet1B
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+
+  testRDSmysqlCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      DatabaseName: UserDB
+      DBClusterIdentifier: test-fr-rds-mysql
+      DBClusterParameterGroupName: default.aurora-mysql5.7
+      DBSubnetGroupName:
+        Ref: testRDSmysqlSubnets
+      EngineMode: serverless
+      MasterUsername: admin
+      MasterUserPassword: NotShownYouNeedToChange
+      StorageEncrypted: true
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcSecurityGroupIds:
+        - !ImportValue TestRDSVPCSecurityGroup
+    UpdateReplacePolicy: Snapshot
+    DeletionPolicy: Snapshot
+
+Outputs:
+  DBname:
+    Description: DB Cluster Identifier
+    Value: !Ref testRDSmysqlCluster
+  dbEndpointAddress:
+    Description: DB Cluster Endpoint Address
+    Value:
+      !GetAtt testRDSmysqlCluster.Endpoint.Address
+  dbEndpointPort:
+    Description: DB Cluster Endpoint Port
+    Value:
+      !GetAtt testRDSmysqlCluster.Endpoint.Port

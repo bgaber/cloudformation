@@ -1,0 +1,52 @@
+---
+# Brian Gaber
+# IAM User Creation Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-2 cloudformation create-stack --stack-name myteststack --template-body file://read-only-user.yaml --parameters ...
+# This CloudFormation Template will create one user with ReadOnly access in all accounts
+Parameters:
+  Username:
+    Description: User Name
+    Type: String
+  FullName:
+    Description: Full Name
+    Type: String
+  Password:
+    Description: One Time Password must contain at least 8 characters, an uppercase letter, a special character and a digit.
+    Type: String
+
+Resources:
+  IAMuser:
+    Type: AWS::IAM::User
+    Properties: 
+      Groups:
+        - readonly
+      LoginProfile: 
+        Password: !Ref Password
+        PasswordResetRequired: true
+      ManagedPolicyArns: 
+        - arn:aws:iam::472510080448:policy/custom-iam-access-key-and-MFA
+        - arn:aws:iam::aws:policy/IAMUserChangePassword
+      Tags: 
+        - Key: Name
+          Value: !Ref FullName
+      UserName: !Ref Username
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "IAM User Information"
+        Parameters:
+          - Username
+          - FullName
+          - Password
+
+Outputs:
+  UserARN:
+    Description: New User ARN
+    Value:
+      !GetAtt IAMuser.Arn

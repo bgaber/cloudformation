@@ -1,0 +1,157 @@
+---
+# Author: Brian Gaber
+# MuleSoft Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name amazon-mq-stack --template-body file://amz-mq.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - MQ Security Group
+# - Amazon MQ Broker
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-09-19 12:00:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Tool used to create resources
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Incident:
+    Description: Service Now Incident
+    Default: INC47195850
+    Type: String
+  Application:
+    Description: Application Name
+    Default: MuleSoft
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Mike Legato
+    Type: String
+  InstanceType:
+    Description: Enter mq.t2.micro, mq.t3.micro, mq.m4.large, mq.m5.large, mq.m5.xlarge, mq.m5.2xlarge or mq.m5.4xlarge. Default is mq.m5.xlarge.
+    Type: String
+    Default: mq.t3.micro
+    AllowedValues:
+      - mq.t2.micro
+      - mq.t3.micro
+      - mq.m4.large
+      - mq.m5.large
+      - mq.m5.xlarge
+      - mq.m5.2xlarge
+      - mq.m5.4xlarge
+  MqPrivSubnets:
+    Description: Amazon MQ Private Subnets
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-16d58e4e, subnet-bc5d0496"
+  SecGpId:
+    Description: Id of existing Security Group
+    Default: sg-06a65919a8e3f03c6
+    Type: String
+  VpcId:
+    Description: Test VPC
+    Default: vpc-15df6372
+    Type: AWS::EC2::VPC::Id
+  VpcCidr:
+    Description: CIDR of the selected VPC
+    Default: 10.251.48.0/20
+    Type: String
+  BrokerName:
+    Description: The name of the Amazon MQ Broker
+    Default: MuleSoft-Amazon-MQ-Broker
+    Type: String
+  Username:
+    Description: An ActiveMQ user is a person or an application that can access the queues and topics of an ActiveMQ broker.
+    Type: String
+    Default: mulemqadmin-test
+  Password:
+    Description: Password of the ActiveMQ user
+    Type: String
+    Default: 7chz1FpKjPo6XYa5KaRy
+    NoEcho: true
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Amazon MQ"
+        Parameters:
+          - InstanceType
+          - MqPrivSubnets
+          - BrokerName
+          - Username
+          - Password
+      - Label:
+          default: "Network"
+        Parameters:
+          - SecGpId
+          - VpcId
+          - VpcCidr
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      InstanceType:
+        default: "What is the desired instance type for this Amazon MQ Broker?"
+      MqPrivSubnets:
+        default: "What are the Subnets for this Amazon MQ Broker?"
+      SecGpId:
+        default: "What is the name of the Security Group for this Amazon MQ Broker?"
+      BrokerName:
+        default: "What is the name of the Amazon MQ Broker?"
+
+Resources:
+  AmazonMqBroker:
+    Type: AWS::AmazonMQ::Broker
+    Properties: 
+      AuthenticationStrategy: Simple
+      AutoMinorVersionUpgrade: true
+      BrokerName: !Ref BrokerName
+      DeploymentMode: ACTIVE_STANDBY_MULTI_AZ
+      EngineType: ACTIVEMQ
+      EngineVersion: 5.17.3
+      HostInstanceType: !Ref InstanceType
+      MaintenanceWindowStartTime: 
+        DayOfWeek: Sunday
+        TimeOfDay: 02:00:00
+        TimeZone: America/Toronto
+      PubliclyAccessible: false
+      SecurityGroups:
+        - !Ref SecGpId
+      #StorageType: String
+      SubnetIds: !Ref MqPrivSubnets
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Incident
+          Value: !Ref Incident
+      Users: 
+        - ConsoleAccess: true
+          Password: !Ref Password
+          Username: !Ref Username
+
+Outputs:
+  AmazonMqBrokerID:
+    Description: Amazon MQ Broker ID
+    Value: !Ref AmazonMqBroker
+  AmazonMqBrokerEndPt:
+    Description: Amazon MQ Broker Endpoint
+    Value: !Join [',', !GetAtt AmazonMqBroker.AmqpEndpoints]
+  AmazonMqBrokerArn:
+    Description: Amazon MQ Broker Arn
+    Value: !GetAtt AmazonMqBroker.Arn

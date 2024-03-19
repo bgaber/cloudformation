@@ -1,0 +1,88 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 Cognito Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-cognito-stack --template-body file://cg3-cognito-prod.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Route 53 Record
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-28 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  R53HostedZoneName:
+    Description: The Route 53 Hosted Zone Name For careguard.net
+    Type: String
+    Default: careguard.net
+    MinLength: 10
+    AllowedPattern: ^[a-zA-Z0-9\.]*$
+  R53HostedZoneId:
+    Description: The Route 53 Hosted Zone Id For careguard.net
+    Type: AWS::Route53::HostedZone::Id
+    Default: Z18BORQC57TNAS
+    MinLength: 10
+    AllowedPattern: ^[A-Z0-9]*$
+  CustomDomainName:
+    Description: The API Gateway Custom Domain name
+    Type: String
+    Default: api.careguard.net
+    MinLength: 10
+    AllowedPattern: ^[a-zA-Z0-9\-\.]*$
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "DNS"
+        Parameters:
+          - R53HostedZoneName
+          - R53HostedZoneId
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+    ParameterLabels:
+      CustomDomainName:
+        default: "What is the name of the Prod Custom Domain (cannot already be used by an existing User Pool)?"
+      R53HostedZoneId:
+        default: "What is the Id of the Route 53 Hosted Zone?"
+
+Resources:
+  # Create Route 53 DNS Record for CareGuard Prod API Gateway
+  CareGuardApiGwDomainNameDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: d-fg3p8igm06.execute-api.us-east-1.amazonaws.com
+        EvaluateTargetHealth: true
+        HostedZoneId: Z1UJRXOUMOOFQ8
+      #HostedZoneName: !Ref R53HostedZoneName
+      HostedZoneId: !Ref R53HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      
+Outputs:
+  DNSname:
+    Description: Route 53 DNS Name
+    Value: !Ref CareGuardApiGwDomainNameDnsRecord

@@ -1,0 +1,184 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+# Creates Internal IDM ALB.
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-04-21 12:35:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  prodForgeRockVpc:
+    Description: Prod ForgeRock Public 161.108.207.0/24 CIDR VPC
+    Default: vpc-fc294885
+    Type: String
+  prodForgeRockVpcPubSubnet1a:
+    Description: Prod ForgeRock 161.108.207.0/26 Public Subnet1a
+    Default: subnet-c70ae8a3
+    Type: String
+  prodForgeRockVpcPubSubnet1b:
+    Description: Prod ForgeRock 161.108.207.64/26 Public Subnet1b
+    Default: subnet-8867f8a4
+    Type: String
+  prodForgeRockVpcPrivSubnet1a:
+    Description: Prod ForgeRock 161.108.207.128/26 Private Subnet1a
+    Default: subnet-a1f61bc5
+    Type: String
+  prodForgeRockVpcPrivSubnet1b:
+    Description: Prod ForgeRock 161.108.207.192/26 Private Subnet1b
+    Default: subnet-c66df2ea
+    Type: String
+  prodIDM1EC2:
+    Description: Prod ForgeRock IDM-1 Server Instance Id
+    Default: i-0085b46d32efc8356
+    Type: String
+  prodIDM2EC2:
+    Description: Prod ForgeRock IDM-2 Server Instance Id
+    Default: i-016cfdb3bc3d7ddf1
+    Type: String
+Resources:  
+  prodIntIdmAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from Internal CompuCom
+      GroupName: prod-int-idm-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.0.0.0/8
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 172.16.0.0/12
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 192.168.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 161.108.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: prodForgeRockVpc
+
+  ProdIntIdmAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: prod-alb-fr-idm-443to8443
+      Scheme: internal
+      SecurityGroups:
+        - Fn::GetAtt:
+            - prodIntIdmAlbSecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: prodForgeRockVpcPrivSubnet1a
+        - Ref: prodForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+  ProdIntIdmAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: ProdIntIdmAppLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: ProdIntIdmAppLdBal
+      Certificates:
+        - CertificateArn: arn:aws:acm:us-east-1:122639376858:certificate/57b16521-b23f-4fcc-8f15-4b93c32d76da
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2019-08
+  ProdIntIdmAppLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /openidm/info/ping
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200,401
+      Name: prod-int-tg-fr-idm-443to8443
+      Port: 8443
+      Protocol: HTTPS
+      Targets:
+        - Id: !Ref prodIDM1EC2
+          Port: 8443
+        - Id: !Ref prodIDM2EC2
+          Port: 8443
+      TargetType: instance
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: prodForgeRockVpc
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref prodForgeRockVpc
+  PrivSubnet1A:
+    Description: Private Subnet1a
+    Value: !Ref prodForgeRockVpcPrivSubnet1a
+  PrivSubnet1B:
+    Description: Private Subnet1b
+    Value: !Ref prodForgeRockVpcPrivSubnet1b
+  InternalIdGwAlbSecurityGroup:
+    Description: ForgeRock Internal IDM ALB Security Group
+    Value: !Ref prodIntIdmAlbSecurityGroup
+  IGintALBname:
+    Description: Full name of the IDM Internal ALB 443 to 8443
+    Value:
+      !GetAtt ProdIntIdmAppLdBal.LoadBalancerFullName
+  IGintALBDnsName:
+    Description: DNS name of the IDM Internal ALB 443 to 8443
+    Value:
+      !GetAtt ProdIntIdmAppLdBal.DNSName

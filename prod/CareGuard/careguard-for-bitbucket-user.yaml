@@ -1,0 +1,218 @@
+---
+# Brian Gaber
+# IAM User Creation Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name myprodstack --template-body file://careguard-for-bitbucket-user.yaml --parameters ...
+# This CloudFormation Template will create one IAM User and one IAM Role
+# This template creates an IAM user without console access whose only purpose is to have its Access keys to be used by Bitbucket Pipelines for deployment
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-03-30 10:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: CareGuard 3
+    Type: String
+  Owner:
+    Description: Owner Name
+    Default: Rama Pulivarthy
+    Type: String
+  Username:
+    Description: User Name
+    Default: careguard_for_bitbucket
+    Type: String
+  EcsTaskRoleName:
+    Description: Care Guard ECS Task Role Name
+    Default: cg-prod-ecs-task-role
+    Type: String
+  EcsTaskExecutionRoleName:
+    Description: Care Guard ECS Task Execution Role Name
+    Default: cg-prod-ecs-execution-role
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "IAM User Information"
+        Parameters:
+          - Username
+      - Label:
+          default: "Elastic Container Service (ECS)"
+        Parameters:
+          - EcsTaskRoleName
+          - EcsTaskExecutionRoleName
+      - Label:
+          default: "Tags"
+        Parameters:
+          - CreationDate
+          - CreatedBy
+          - Application
+          - Owner
+
+Resources:
+  IamEcrROPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: ECR Read Only Policy
+      ManagedPolicyName: ECR_ReadOnly_Policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ecr:GetRegistryPolicy'
+              - 'ecr:DescribeImageScanFindings'
+              - 'ecr:GetLifecyclePolicyPreview'
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:DescribeRegistry'
+              - 'ecr:DescribePullThroughCacheRules'
+              - 'ecr:DescribeImageReplicationStatus'
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:ListTagsForResource'
+              - 'ecr:ListImages'
+              - 'ecr:BatchGetRepositoryScanningConfiguration'
+              - 'ecr:GetRegistryScanningConfiguration'
+              - 'ecr:BatchGetImage'
+              - 'ecr:DescribeImages'
+              - 'ecr:DescribeRepositories'
+              - 'ecr:BatchCheckLayerAvailability'
+              - 'ecr:GetRepositoryPolicy'
+              - 'ecr:GetLifecyclePolicy'
+            Resource: '*'
+  IamEcsWrPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: ECS Write Policy
+      ManagedPolicyName: ECS_Write_Policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:UpdateService'
+            Resource: !Join ["", ["arn:aws:ecs:*:", !Ref AWS::AccountId, ":service/*/*"] ]
+            #Resource: 'arn:aws:ecs:*:300899438431:service/*/*'
+          - Effect: Allow
+            Action:
+              - 'ecs:RegisterTaskDefinition'
+            Resource: '*'
+
+  IAMuser:
+    Type: AWS::IAM::User
+    Properties:
+      ManagedPolicyArns: 
+        - !Ref IamEcrROPolicy
+        - !Ref IamEcsWrPolicy
+      Policies:
+        - PolicyName: CG3_ECR_Write_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EcrAccess
+                Effect: Allow
+                Action:
+                  - 'ecr:PutImageTagMutability'
+                  - 'ecr:StartImageScan'
+                  - 'ecr:PutImageScanningConfiguration'
+                  - 'ecr:CompleteLayerUpload'
+                  - 'ecr:BatchDeleteImage'
+                  - 'ecr:UploadLayerPart'
+                  - 'ecr:InitiateLayerUpload'
+                  - 'ecr:ReplicateImage'
+                  - 'ecr:PutImage'
+                Resource: !Join ["", ["arn:aws:ecr:us-east-1:", !Ref AWS::AccountId, ":repository/cg3-backend"] ]
+                #Resource: 'arn:aws:ecr:us-east-1:300899438431:repository/cg3-backend'
+        - PolicyName: CG3_S3_Write_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: S3Access
+                Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !ImportValue ExCG3ProdS3BucketArn
+                  #- 'arn:aws:s3:::careguard-frontend-prod-bucket'
+                  - !Join ["", [!ImportValue ExCG3ProdS3BucketArn, "/*"] ]
+                  #- 'arn:aws:s3:::careguard-frontend-prod-bucket/*'
+        - PolicyName: CG3_CloudFront_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFrontAccess
+                Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Join ["", ["arn:aws:cloudfront::", !Ref AWS::AccountId, ":distribution/", !ImportValue ExCG3ProdCloudFrontDistId] ]
+                #Resource: 'arn:aws:cloudfront::300899438431:distribution/E1DFZCGNU1GLB8'
+        - PolicyName: CG3_Lambda_Write_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LambdaAccess
+                Effect: Allow
+                Action: lambda:UpdateFunctionCode
+                Resource:
+                  - !Join ["", ["arn:aws:lambda:us-east-1:", !Ref AWS::AccountId, ":function:careguard-user-migration-prod"] ]
+                  #- 'arn:aws:lambda:us-east-1:300899438431:function:careguard-user-migration-prod'
+                  - !Join ["", ["arn:aws:lambda:us-east-1:", !Ref AWS::AccountId, ":function:careguard-pretoken-generator-prod"] ]
+                  #- 'arn:aws:lambda:us-east-1:300899438431:function:careguard-pretoken-generator-prod'
+        - PolicyName: CG3_ECS_Pass_Role_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PolicyStatementToAllowUserToPassSpecificRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  #- arn:aws:iam::300899438431:role/cg-ecs-task-role
+                  - !Join ["", ["arn:aws:iam::", !Ref AWS::AccountId, ":role/", !Ref EcsTaskRoleName]]
+                  #- arn:aws:iam::300899438431:role/cg-ecs-execution-role
+                  - !Join ["", ["arn:aws:iam::", !Ref AWS::AccountId, ":role/", !Ref EcsTaskExecutionRoleName]]
+        - PolicyName: CG3_Cognito_Write_Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CognitoAccess
+                Effect: Allow
+                Action:
+                  - 'cognito-idp:AdminEnableUser'
+                  - 'cognito-idp:AdminCreateUser'
+                  - 'cognito-idp:AdminDisableUser'
+                  - 'cognito-idp:AdminDeleteUser'
+                Resource: '*'
+      Tags:
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+        - Key: Application
+          Value: !Ref Application
+        - Key: Owner
+          Value: !Ref Owner
+      UserName: !Ref Username
+
+Outputs:
+  IAMUserARN:
+    Description: New IAM User ARN
+    Value: !GetAtt IAMuser.Arn
+    Export:
+      Name: CG3IAMUserArn
+  ManagedEcrROPolicyARN:
+    Description: New IAM Managed ECR Read Only Policy ARN
+    Value: !Ref IamEcrROPolicy
+  ManagedEcsWritePolicyARN:
+    Description: New IAM Managed ECS Write Policy ARN
+    Value: !Ref IamEcsWrPolicy

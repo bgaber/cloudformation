@@ -1,0 +1,380 @@
+Resources:
+  MyCluster4C1BA579:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: connect-cluster-prod
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyCluster/Resource
+  connectexecutionroleprodtaskpolicy26B949E5F:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Effect: Allow
+            Resource: arn:aws:ssm:us-east-1:047453590376:parameter/connect/prod/*
+          - Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:DescribeLogStreams
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource: arn:aws:logs:us-east-1:047453590376:*
+          - Action:
+              - s3:GetBucketLocation
+              - s3:GetObject
+              - s3:ListBucket
+            Effect: Allow
+            Resource:
+              - arn:aws:s3:::connect-log-configuration
+              - arn:aws:s3:::connect-log-configuration/*
+            Sid: FluentBit
+        Version: "2012-10-17"
+      Description: ""
+      ManagedPolicyName: connect-execution-role-prod-task-policy-2
+      Path: /
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/connect-execution-role-prod-task-policy-2/Resource
+  connecttaskrole2B24D62E:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - arn:aws:iam::047453590376:policy/connect-prod-policy
+        - Ref: connectexecutionroleprodtaskpolicy26B949E5F
+      RoleName: connect-task-role-prod
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/connect-task-role/Resource
+  connectexecutionroleprodpolicy20AFFF5AB:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Effect: Allow
+            Resource: arn:aws:ssm:us-east-1:047453590376:parameter/connect/prod/*
+        Version: "2012-10-17"
+      Description: ""
+      ManagedPolicyName: connect-execution-role-prod-policy-2
+      Path: /
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/connect-execution-role-prod-policy-2/Resource
+  connectexecutionrole50038886:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - Ref: connectexecutionroleprodpolicy20AFFF5AB
+      RoleName: connect-execution-role-prod
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/connect-execution-role/Resource
+  connectexecutionroleDefaultPolicy42E38C26:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MyFargateServiceTaskDefwebLogGroup4A6C44E8
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: connectexecutionroleDefaultPolicy42E38C26
+      Roles:
+        - Ref: connectexecutionrole50038886
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/connect-execution-role/DefaultPolicy/Resource
+  MyFargateServiceLBDE830E97:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: connect-lb-prod
+      Scheme: internet-facing
+      SecurityGroups:
+        - Fn::GetAtt:
+            - MyFargateServiceLBSecurityGroup6FBF16F1
+            - GroupId
+      Subnets:
+        - subnet-02766acb031817c53
+        - subnet-0e9c25187c6311232
+        - subnet-08b70d79ae5f718f8
+      Type: application
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/LB/Resource
+  MyFargateServiceLBSecurityGroup6FBF16F1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Automatically created Security Group for ELB connectecsprodMyFargateServiceLBF80271FE
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow from anyone on port 80
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      VpcId: vpc-04b8eb9a6585890d3
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/LB/SecurityGroup/Resource
+  MyFargateServiceLBSecurityGrouptoconnectecsprodMyFargateServiceSecurityGroup8F62CAFF3000B8CF8E51:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - MyFargateServiceLBSecurityGroup6FBF16F1
+          - GroupId
+      IpProtocol: tcp
+      Description: Load balancer to target
+      DestinationSecurityGroupId:
+        Fn::GetAtt:
+          - MyFargateServiceSecurityGroup7016792A
+          - GroupId
+      FromPort: 3000
+      ToPort: 3000
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/LB/SecurityGroup/to connectecsprodMyFargateServiceSecurityGroup8F62CAFF:3000
+  MyFargateServiceLBPublicListener61A1042F:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: MyFargateServiceLBPublicListenerECSGroup4A3EDF05
+          Type: forward
+      LoadBalancerArn:
+        Ref: MyFargateServiceLBDE830E97
+      Port: 80
+      Protocol: HTTP
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/LB/PublicListener/Resource
+  MyFargateServiceLBPublicListenerECSGroup4A3EDF05:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: 200,307
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: "false"
+      TargetType: ip
+      VpcId: vpc-04b8eb9a6585890d3
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/LB/PublicListener/ECSGroup/Resource
+  MyFargateServiceTaskDef5DA17B39:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Essential: true
+          Image: 047453590376.dkr.ecr.us-east-1.amazonaws.com/connect:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Ref: MyFargateServiceTaskDefwebLogGroup4A6C44E8
+              awslogs-stream-prefix: connect-ecs-prod
+              awslogs-region: us-east-1
+          Name: web
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Fn::GetAtt:
+          - connectexecutionrole50038886
+          - Arn
+      Family: connect-task-prod
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn:
+        Fn::GetAtt:
+          - connecttaskrole2B24D62E
+          - Arn
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/TaskDef/Resource
+  MyFargateServiceTaskDefwebLogGroup4A6C44E8:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 365
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/TaskDef/web/LogGroup/Resource
+  MyFargateServiceF490C034:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Ref: MyCluster4C1BA579
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      EnableECSManagedTags: false
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: web
+          ContainerPort: 3000
+          TargetGroupArn:
+            Ref: MyFargateServiceLBPublicListenerECSGroup4A3EDF05
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - Fn::GetAtt:
+                - MyFargateServiceSecurityGroup7016792A
+                - GroupId
+          Subnets:
+            - subnet-01724f457ccc6a5ba
+            - subnet-089d2a0cd0b049867
+            - subnet-04dcda5f75196c797
+      ServiceName: connect-service-prod
+      TaskDefinition:
+        Ref: MyFargateServiceTaskDef5DA17B39
+    DependsOn:
+      - MyFargateServiceLBPublicListenerECSGroup4A3EDF05
+      - MyFargateServiceLBPublicListener61A1042F
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/Service/Service
+  MyFargateServiceSecurityGroup7016792A:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: connect-ecs-prod/MyFargateService/Service/SecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      VpcId: vpc-04b8eb9a6585890d3
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/Service/SecurityGroup/Resource
+  MyFargateServiceSecurityGroupfromconnectecsprodMyFargateServiceLBSecurityGroup6A3FA81A30001AF1DC97:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Load balancer to target
+      FromPort: 3000
+      GroupId:
+        Fn::GetAtt:
+          - MyFargateServiceSecurityGroup7016792A
+          - GroupId
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - MyFargateServiceLBSecurityGroup6FBF16F1
+          - GroupId
+      ToPort: 3000
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/Service/SecurityGroup/from connectecsprodMyFargateServiceLBSecurityGroup6A3FA81A:3000
+  MyFargateServiceTaskCountTargetFD19DCA5:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 4
+      MinCapacity: 2
+      ResourceId:
+        Fn::Join:
+          - ""
+          - - service/
+            - Ref: MyCluster4C1BA579
+            - /
+            - Fn::GetAtt:
+                - MyFargateServiceF490C034
+                - Name
+      RoleARN: arn:aws:iam::047453590376:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/Service/TaskCount/Target/Resource
+  MyFargateServiceTaskCountTargetCpuScalingF003376B:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: connectecsprodMyFargateServiceTaskCountTargetCpuScaling4403099E
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId:
+        Ref: MyFargateServiceTaskCountTargetFD19DCA5
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        TargetValue: 50
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/MyFargateService/Service/TaskCount/Target/CpuScaling/Resource
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/31S227CMAz9lr2HbDBp4nVjF01i2kR5RyY1lSEkVS5MqOq/z01poWzaU5yTc+wT2xM5vZd3N/DtRyrfjTStZZUFUDuxQG+jUyj4bVWh8rKa6egDOjHbmC58BVdAwCX43TNuyFAgaxrCNWJNADLoLrCTNkN3IK7Doi7MFGhY65R2ZqMJtSDYy+oDDBSYf1lN6tgIhsDC6pQmnWdSG9WC/7AqIbBt4+VjWTIKjZG5hfyJCxqF+ZUn1OADKc2MdWKQKQ4TWf2tTp0Z3C95xA0zJ04XX7wvuTKGN2dj2favvzbOuWaGKjoKx57yP/BSOPT+F/xuEl4LbQse6dwWvbyLawFnWxCD9TwO/jhb6OfSmEu5h0h7LB0vEAuyVneexACo6wb6jKGMKVW3cLUwNke59beH8VSOH3g9t55o5HgPaI9y0Z4/ATgbLLoCAAA=
+    Metadata:
+      aws:cdk:path: connect-ecs-prod/CDKMetadata/Default
+Outputs:
+  taskRole:
+    Value:
+      Fn::GetAtt:
+        - connecttaskrole2B24D62E
+        - Arn
+  executionRole:
+    Value:
+      Fn::GetAtt:
+        - connectexecutionrole50038886
+        - Arn
+  MyFargateServiceLoadBalancerDNS704F6391:
+    Value:
+      Fn::GetAtt:
+        - MyFargateServiceLBDE830E97
+        - DNSName
+  MyFargateServiceServiceURL4CF8398A:
+    Value:
+      Fn::Join:
+        - ""
+        - - http://
+          - Fn::GetAtt:
+              - MyFargateServiceLBDE830E97
+              - DNSName
+  service:
+    Value:
+      Fn::GetAtt:
+        - MyFargateServiceF490C034
+        - Name
+Parameters:
+  BootstrapVersion:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /cdk-bootstrap/hnb659fds/version
+    Description: Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]
+Rules:
+  CheckBootstrapVersion:
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Contains:
+                - - "1"
+                  - "2"
+                  - "3"
+                  - "4"
+                  - "5"
+                - Ref: BootstrapVersion
+        AssertDescription: CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.
+

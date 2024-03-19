@@ -1,0 +1,58 @@
+---
+# Author: Brian Gaber
+# CareGuard 3 S3 and CloudFront Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name cg3-r53-recordset-for-prod-stack --template-body file://cg3-r53-recordset-in-test.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This CloudFormation Template will create the following resources:
+# - Route53 RecordSetGroup in Test account
+
+Parameters:
+  R53HostedZoneId:
+    Description: The Route 53 Hosted Zone Id For careguard.net
+    Type: String
+    Default: Z18BORQC57TNAS
+  CloudFrontDomainName:
+    Description: CloudFront Distribution Domain Name
+    Type: String
+    Default: dffsbsuxsx5q8.cloudfront.net
+
+Resources:
+  # Create Route 53 DNS Alias Records for the CloudFront Distribution URL
+  CognitoDNSRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref R53HostedZoneId
+      RecordSets: 
+        - Name: prod-vsn.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: prod-compucom.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: prod-att.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: prod-attni.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: prod-attcp.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+        - Name: prod-attmss.careguard.net
+          Type: A
+          AliasTarget:
+            DNSName: !Ref CloudFrontDomainName
+            HostedZoneId: Z2FDTNDATAQYW2

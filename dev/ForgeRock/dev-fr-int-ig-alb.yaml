@@ -1,0 +1,183 @@
+---
+# Brian Gaber
+# ForgeRock 7 Upgrade Cloudformation Template
+# Creates Internal IG ALB.
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2022-04-05 18:10:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  Creator:
+    Description: Name of Creator
+    Default: Brian Gaber
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Forgerock
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Michael Graf
+    Type: String
+  devForgeRockVpc:
+    Description: Development ForgeRock Public 161.108.205.0/24 CIDR VPC
+    Default: vpc-5f7cfe26
+    Type: String
+  devForgeRockVpcPubSubnet1a:
+    Description: Development ForgeRock 161.108.205.0/26 Public Subnet1a
+    Default: subnet-a1bf06fb
+    Type: String
+  devForgeRockVpcPubSubnet1b:
+    Description: Development ForgeRock 161.108.205.64/26 Public Subnet1b
+    Default: subnet-463d2f23
+    Type: String
+  devForgeRockVpcPrivSubnet1a:
+    Description: Development ForgeRock 161.108.205.128/26 Private Subnet1a
+    Default: subnet-dfb10885
+    Type: String
+  devForgeRockVpcPrivSubnet1b:
+    Description: Development ForgeRock 161.108.205.192/26 Private Subnet1b
+    Default: subnet-2b34264e
+    Type: String
+  devIG1EC2:
+    Description: Development ForgeRock IG-1 Server
+    Default: i-019518af1a095d280
+    Type: String
+Resources:  
+  devIntIgAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access from Internal CompuCom
+      GroupName: dev-int-ig-alb-sec-group
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 10.0.0.0/8
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 172.16.0.0/12
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 192.168.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 161.108.0.0/16
+          Description: allow https access from Internal CompuCom
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 150.124.0.0/16
+          Description: allow https access to Service Now
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: devForgeRockVpc
+
+  DevIntIgAppLdBal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Name: dev-alb-fr-ig-internal
+      Scheme: internal
+      SecurityGroups:
+        - Fn::GetAtt:
+            - devIntIgAlbSecurityGroup
+            - GroupId
+      Subnets:
+        - Ref: devForgeRockVpcPrivSubnet1a
+        - Ref: devForgeRockVpcPrivSubnet1b
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      Type: application
+  DevIntIgAppLdBalListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn:
+            Ref: DevIntIgAppLdBalTgtGrp
+          Type: forward
+      LoadBalancerArn:
+        Ref: DevIntIgAppLdBal
+      Certificates:
+        - CertificateArn: arn:aws:acm:us-east-1:300899438431:certificate/a2e73931-e190-4540-9264-a72b312fb18d
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2019-08
+  DevIntIgAppLdBalTgtGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /openig/ping
+      HealthCheckTimeoutSeconds: 5
+      Matcher:
+        HttpCode: 200,302
+      Name: dev-int-tg-fr-ig
+      Port: 8443
+      Protocol: HTTPS
+      Targets:
+        - Id:
+            Ref: devIG1EC2
+          Port: 8443
+      TargetType: instance
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref Creator
+      VpcId:
+        Ref: devForgeRockVpc
+
+Outputs:
+  VPCID:
+    Description: VPC Identifier
+    Value: !Ref devForgeRockVpc
+  PrivSubnet1A:
+    Description: Private Subnet1a
+    Value: !Ref devForgeRockVpcPrivSubnet1a
+  PrivSubnet1B:
+    Description: Private Subnet1b
+    Value: !Ref devForgeRockVpcPrivSubnet1b
+  InternalIdGwAlbSecurityGroup:
+    Description: ForgeRock Internal IG ALB Security Group
+    Value: !Ref devIntIgAlbSecurityGroup
+  IGintALBname:
+    Description: Full name of the IG Internal ALB
+    Value:
+      !GetAtt DevIntIgAppLdBal.LoadBalancerFullName
+  IGintALBDnsName:
+    Description: DNS name of the IG Internal ALB
+    Value:
+      !GetAtt DevIntIgAppLdBal.DNSName

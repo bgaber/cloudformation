@@ -1,0 +1,195 @@
+---
+# Author: Brian Gaber
+# Connect API Gateway Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-1 cloudformation create-stack --stack-name myteststack --template-body file://api-gateway.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This template will only use the first two AZs of a region
+# This CloudFormation Template will create:
+# - API Gateway
+
+Parameters:
+  CreationDate:
+    Description: Creation Date
+    Type: String
+    Default: "2023-07-19 11:30:00"
+    AllowedPattern: "^\\d{4}(-\\d{2}){2} (\\d{2}:){2}\\d{2}$"
+    ConstraintDescription: Date and time of creation
+  CreatedBy:
+    Description: Who or what created this Cloudformation stack
+    Default: Brian Gaber using CloudFormation
+    Type: String
+  Application:
+    Description: Application Name
+    Default: Connect
+    Type: String
+  Owner:
+    Description: Application Owner
+    Default: Rama Pulivarthy
+    Type: String
+  ApiGwName:
+    Description: API Gateway Name
+    Default: cfn-twilio-async-api
+    Type: String
+  ApiGwDescription:
+    Description: API Gateway Description
+    Default: Connect API Gateway
+    Type: String
+  LambdaInvokeURI:
+    Description: Lambda Invoke URI
+    Default: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:047453590376:function:process-twilio-message/invocations
+    Type: String
+
+Resources:
+  ConnectRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: !Ref ApiGwDescription
+      EndpointConfiguration:
+        Types: 
+          - REGIONAL
+      Name: !Ref ApiGwName
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  ConnectApiGwResource:
+    Type: AWS::ApiGateway::Resource
+    Properties: 
+      ParentId: !GetAtt ConnectRestApi.RootResourceId
+      PathPart: sendmessage
+      RestApiId: !Ref ConnectRestApi
+
+  ConnectApiGwMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ConnectRestApi
+      ResourceId: !Ref ConnectApiGwResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        RequestParameters:
+          integration.request.header.X-Amz-Invocation-Type: method.request.header.InvocationType
+        RequestTemplates:
+          "application/json": "{\n  \"method\": \"$context.httpMethod\",\n  \"body\" : $input.json('$'),\n  \"headers\": {\n    #foreach($param in $input.params().header.keySet())\n    \"$param\": \"$util.escapeJavaScript($input.params().header.get($param))\"\n    #if($foreach.hasNext),#end\n    #end\n  }\n}"
+        Uri: !Ref LambdaInvokeURI
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+      RequestParameters:
+        method.request.header.InvocationType: false
+
+  ConnectDeployment:
+    DependsOn: ConnectApiGwMethod
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref ConnectRestApi
+      Description: Connect deployment
+
+  Dev:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: dev
+      Description: Dev Stage
+      RestApiId: !Ref ConnectRestApi
+      DeploymentId: !Ref ConnectDeployment
+      MethodSettings:
+        - ResourcePath: /process-twilio-message
+          HttpMethod: POST
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          LoggingLevel: 'OFF'
+        - ResourcePath: /sendmessage
+          HttpMethod: GET
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          LoggingLevel: 'OFF'
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+  v1:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: v1
+      Description: v1 Stage
+      RestApiId: !Ref ConnectRestApi
+      DeploymentId: !Ref ConnectDeployment
+      MethodSettings:
+        - ResourcePath: /sendmessage
+          HttpMethod: POST
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+          LoggingLevel: 'ERROR'
+      Tags: 
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Application
+          Value: !Ref Application
+        - Key: Created
+          Value: !Ref CreationDate
+        - Key: Creator
+          Value: !Ref CreatedBy
+
+usagePlan:
+  Type: AWS::ApiGateway::UsagePlan
+  Properties:
+    ApiStages:
+      - ApiId: !Ref ConnectRestApi
+        Stage: !Ref v1
+    Description: Connect API Gateway Usage Plan
+    UsagePlanName: process-twilio-message-UsagePlan
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "API Gateway"
+        Parameters:
+          - ApiGwName
+          - ApiGwDescription
+          - LambdaInvokeURI
+    ParameterLabels:
+      ApiGwName:
+        default: "What is the name of new API Gateway?"
+      ApiGwDescription:
+        default: "What is the description of new API Gateway?"
+      LambdaInvokeURL:
+        default: "What is the URI of the Lambda function?"
+        
+Outputs:
+  ApiGwId:
+    Description: API Gateway Information
+    Value: !Ref ConnectRestApi
+  ApiGwRootId:
+    Description: The root resource ID for the RestApi resource
+    Value: !GetAtt ConnectRestApi.RootResourceId
+  ApiGwDeployId:
+    Description: The Deployment ID of the API Gateway
+    Value: !GetAtt ConnectDeployment.DeploymentId
+  ApiGwUsagePlanId:
+    Description: The Usage Plan ID of the API Gateway
+    Value: !GetAtt usagePlan.Id
+  MyStacksRegion:
+    Description: This Stack's Region
+    Value: !Ref "AWS::Region"

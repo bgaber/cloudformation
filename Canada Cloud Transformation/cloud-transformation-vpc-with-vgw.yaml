@@ -1,0 +1,500 @@
+---
+# Brian Gaber
+# Canada Cloud Transformation VPC Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region ca-central-1 cloudformation create-stack --stack-name myteststack --template-body file://cloud-transformation-vpc.json --parameters ParameterKey=ActualParamName,ParameterValue=ActualParamValue
+# This template will only use the first two AZs of a region
+# This CloudFormation Template will create:
+# - VPC
+# - Public and Private Subnets in two AZs so four subnets
+# - Internet Gateway
+# - VPN Gateway
+# - NAT Gateway (if required)
+# - Route Tables (Public and Private)
+
+Parameters:
+  VPCName:
+    Description: VPC Name
+    Default: CUSTOMER FACING VPC - <CUST-NAME>
+    Type: String
+  CidrIp:
+    Description: The VPC CIDR Block
+    Type: String
+    Default: 192.168.1.0/24
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicSubnet1:
+    Description: First Public Subnet Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Public1
+    Type: String
+  PubSubIp1:
+    Description: Public Subnet 1
+    Type: String
+    Default: 192.168.1.0/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicSubnet2:
+    Description: Second Public Subnet Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Public2
+    Type: String
+  PubSubIp2:
+    Description: Public Subnet 2
+    Type: String
+    Default: 192.168.1.64/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PrivateSubnet1:
+    Description: First Private Subnet Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Private1
+    Type: String
+  PrivSubIp1:
+    Description: Private Subnet 1
+    Type: String
+    Default: 192.168.1.128/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PrivateSubnet2:
+    Description: Second Private Subnet Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Private2
+    Type: String
+  PrivSubIp2:
+    Description: Private Subnet 2
+    Type: String
+    Default: 192.168.1.192/26
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    MinLength: '9'
+    MaxLength: '18'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x
+  PublicRouteDescription:
+    Description: Public Route Table Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Public RT
+    Type: String
+  PrivateRouteDescription:
+    Description: Private Route Table Description
+    Default: CUSTOMER FACING VPC - <CUST-NAME> - Private RT
+    Type: String
+  VGWASN:
+    Description: VGW Amazon Side ASN
+    Default: 99999
+    Type: Number
+  NATGWrequired: 
+    Description: NAT Gateway Description
+    Default: No
+    Type: String
+    AllowedValues: 
+      - Yes
+      - No
+    ConstraintDescription: Must provide an answer.
+
+Conditions: 
+  CreateNATgateway: !Equals [ !Ref NATGWrequired, Yes ]
+
+Resources:
+  CustomVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref CidrIp
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Ref VPCName
+      - Key: Application
+        Value: !Ref AWS::StackName
+  
+  # Create four subnets
+  PubSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PubSubIp1
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PublicSubnet1
+  PubSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PubSubIp2
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PublicSubnet2
+  PrivSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PrivSubIp1
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateSubnet1
+  PrivSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !Ref PrivSubIp2
+      #AvailabilityZone: "ca-central-1"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateSubnet2
+        
+  # Internet Gateway
+  CustomIGW:
+    Type: AWS::EC2::InternetGateway
+    
+  # Attach IGW to VPC
+  AttachIGWToVPC:
+    DependsOn:
+    - CustomVPC
+    - CustomIGW
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      InternetGatewayId:
+        Ref: CustomIGW
+
+  # VPN Gateway
+  VirtPrivGW:
+    Type: AWS::EC2::VPNGateway
+    Properties: 
+      AmazonSideAsn: !Ref VGWASN
+      Type: ipsec.1
+      Tags:
+      - Key: Name
+        Value: Virtual Private Gateway
+
+  # Attach VGW to VPC
+  AttachVPNGatewayToVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      VpcId: !Ref CustomVPC
+      VpnGatewayId: !Ref VirtPrivGW
+
+  # NAT Gateway
+  NATgateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNATgateway
+    DependsOn: CustomIGW
+    Properties: 
+      AllocationId: !GetAtt [ EIPforNATGW, AllocationId ]
+      SubnetId: !Ref PubSubnet2
+      Tags:
+      - Key: Name
+        Value: NAT Gateway
+  
+  # Elastic IP for NAT Gateway
+  EIPforNATGW:
+   DependsOn: AttachIGWToVPC
+   Type: AWS::EC2::EIP
+   Condition: CreateNATgateway
+   Properties:
+      Domain: vpc
+        
+  # Create two Route Tables (Public and Private)
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Name
+        Value: !Ref PublicRouteDescription
+
+  PubSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet1
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet2
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CustomIGW
+    Properties:
+       RouteTableId:
+         Ref: PubRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: CustomIGW
+        
+  PrivRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateRouteDescription
+        
+  PrivSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet1
+      RouteTableId:
+        Ref: PrivRouteTable
+        
+  PrivSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet2
+      RouteTableId:
+        Ref: PrivRouteTable
+
+  # Private Routes for Virtual Private Network Gateway (VGW)
+  PrivRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVPNGatewayToVPC
+    Properties:
+      DestinationCidrBlock: 10.10.10.101/32
+      RouteTableId: !Ref PrivRouteTable
+      GatewayId: !Ref VirtPrivGW
+  PrivRoute2:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVPNGatewayToVPC
+    Properties:
+      DestinationCidrBlock: 10.10.10.102/32
+      RouteTableId: !Ref PrivRouteTable
+      GatewayId: !Ref VirtPrivGW
+  PrivRoute3:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVPNGatewayToVPC
+    Properties:
+      DestinationCidrBlock: 172.31.254.72/29
+      RouteTableId: !Ref PrivRouteTable
+      GatewayId: !Ref VirtPrivGW
+  PrivRoute4:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVPNGatewayToVPC
+    Properties:
+      DestinationCidrBlock: 172.31.254.80/29
+      RouteTableId: !Ref PrivRouteTable
+      GatewayId: !Ref VirtPrivGW
+  PrivRoute5:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVPNGatewayToVPC
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref PrivRouteTable
+      GatewayId: !Ref VirtPrivGW
+
+  # Create a Network ACL in the VPC
+  NetworkAcl:
+      Type: AWS::EC2::NetworkAcl
+      Properties:
+         VpcId:
+           Ref: CustomVPC
+  # Create a Network ACL Rules
+  InboundRule96:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref NetworkAcl
+       RuleNumber: 96
+       Protocol: -1
+       RuleAction: deny
+       CidrBlock: 68.253.115.107/32
+  InboundRule97:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref NetworkAcl
+       RuleNumber: 97
+       Protocol: -1
+       RuleAction: deny
+       CidrBlock: 138.68.34.161/32
+  InboundRule98:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref NetworkAcl
+       RuleNumber: 98
+       Protocol: -1
+       RuleAction: deny
+       CidrBlock: 45.77.64.111/32
+  InboundRule99:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref NetworkAcl
+       RuleNumber: 99
+       Protocol: -1
+       RuleAction: deny
+       CidrBlock: 104.193.252.197/32
+  InboundRule100:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref NetworkAcl
+       RuleNumber: 100
+       Protocol: -1
+       RuleAction: allow
+       CidrBlock: 0.0.0.0/0
+  OutboundRule96:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId:
+         Ref: NetworkAcl
+       RuleNumber: 96
+       Protocol: -1
+       Egress: true
+       RuleAction: deny
+       CidrBlock: 68.253.115.107/32
+  OutboundRule97:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId:
+         Ref: NetworkAcl
+       RuleNumber: 97
+       Protocol: -1
+       Egress: true
+       RuleAction: deny
+       CidrBlock: 138.68.34.161/32
+  OutboundRule98:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId:
+         Ref: NetworkAcl
+       RuleNumber: 98
+       Protocol: -1
+       Egress: true
+       RuleAction: deny
+       CidrBlock: 45.77.64.111/32
+  OutboundRule99:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId:
+         Ref: NetworkAcl
+       RuleNumber: 99
+       Protocol: -1
+       Egress: true
+       RuleAction: deny
+       CidrBlock: 104.193.252.197/32
+  OutboundRule100:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId:
+         Ref: NetworkAcl
+       RuleNumber: 100
+       Protocol: -1
+       Egress: true
+       RuleAction: allow
+       CidrBlock: 0.0.0.0/0
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCName
+          - CidrIp
+          - PublicSubnet1
+          - PubSubIp1
+          - PublicSubnet2
+          - PubSubIp2
+          - PrivateSubnet1
+          - PrivSubIp1
+          - PrivateSubnet2
+          - PrivSubIp2
+          - PublicRouteDescription
+          - PrivateRouteDescription
+          - VGWASN
+          - NATGWrequired
+    ParameterLabels:
+      VPCName:
+        default: "What is the name of new VPC?"
+      CidrIp:
+        default: "What is the IP CIDR of new VPC?"
+      PublicSubnet1:
+        default: "What is the name of this public subnet?"
+      PubSubIp1:
+        default: "What is the IP CIDR of this public subnet?"
+      PublicSubnet2:
+        default: "What is the name of this public subnet?"
+      PubSubIp2:
+        default: "What is the IP CIDR of this public subnet?"
+      PrivateSubnet1:
+        default: "What is the name of this private subnet?"
+      PrivSubIp1:
+        default: "What is the IP CIDR of this private subnet?"
+      PrivateSubnet2:
+        default: "What is the name of this private subnet?"
+      PrivSubIp2:
+        default: "What is the IP CIDR of this private subnet?"
+      PublicRouteDescription:
+        default: "What is the name of the public route table?"
+      PrivateRouteDescription:
+        default: "What is the name of the private route table?"
+      VGWASN:
+        default: "What is the VGW ASN value?"
+      NATGWrequired:
+        default: "Is a NAT Gateway required (recommend answer yes so that private instances can get updates from Internet)?"
+        
+Outputs:
+  VPCID:
+    Description: VPC Information
+    Value: !Ref CustomVPC
+  IGWID:
+    Description: IGW Information
+    Value: !Ref CustomIGW
+  NATGW:
+    Description: NAT Information
+    Value: !Ref NATgateway
+    Condition: CreateNATgateway
+  VGWID:
+    Description: VGW Information
+    Value: !Ref VirtPrivGW
+  ElasticIP:
+    Description: Elastic IP Address
+    Value: !Ref EIPforNATGW
+    Condition: CreateNATgateway
+  EIPallocID:
+    Description: Elastic IP Allocation ID
+    Value: !GetAtt EIPforNATGW.AllocationId
+    Condition: CreateNATgateway
+  NetworkACL:
+    Description: Network ACL
+    Value: !Ref NetworkAcl
+  MyStacksRegion:
+    Description: This Stack's Region
+    Value: !Ref "AWS::Region"
